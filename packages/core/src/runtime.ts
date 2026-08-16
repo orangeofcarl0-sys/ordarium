@@ -17,6 +17,7 @@ import {
   OperationConflictError,
   OperationFailedError,
   PersistedValueTooLargeError,
+  PrincipalConflictError,
   SimulatedProcessCrash,
   UncertainOperationError,
 } from "./errors.js";
@@ -34,6 +35,7 @@ import type {
   InvocationIdentity,
   OperationLedger,
   OperationRecord,
+  ProviderPrincipalRef,
   SafeError,
 } from "./types.js";
 
@@ -110,6 +112,9 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
     assertJsonValue(input, "action input");
     const identity = options.identity ?? directIdentity(action);
     assertInvocationIdentity(identity);
+    if (options.providerPrincipalRef !== undefined) {
+      assertProviderPrincipalRef(options.providerPrincipalRef);
+    }
     const logicalKey = action.key?.(input, identity) ??
       `${identity.source}\u0000${identity.scope}\u0000${identity.callId}`;
     if (logicalKey.length === 0) throw new TypeError("Action logical key must not be empty");
@@ -170,6 +175,9 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
     options: ActionRunOptions,
   ): Promise<O> {
     const now = this.#now();
+    const principalDigest = options.providerPrincipalRef === undefined
+      ? undefined
+      : principalDigestOf(options.providerPrincipalRef);
     const created = await this.ledger.create({
       schemaVersion: 1,
       operationId,
@@ -185,10 +193,12 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
       lastFencingToken: 0,
       createdAt: now,
       updatedAt: now,
+      ...(principalDigest === undefined ? {} : { providerPrincipalDigest: principalDigest }),
     });
     let record = created.record;
     this.#assertCompatible(record, action, inputDigest, logicalKeyDigest);
     this.#assertAuthorizationConsistent(record, options);
+    record = await this.#applyPrincipalBinding(record, options);
 
     while (true) {
       const terminal = this.#readTerminal(record, action);
@@ -665,6 +675,36 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
     }
   }
 
+  /**
+   * Provider principal continuity (docs/13 §2): the first durable digest
+   * binds the operation; a later invocation must resolve to the same
+   * principal or fail closed. Binding a previously unbound record adopts
+   * the presented digest via CAS.
+   */
+  async #applyPrincipalBinding(
+    record: OperationRecord,
+    options: ActionRunOptions,
+  ): Promise<OperationRecord> {
+    const ref = options.providerPrincipalRef;
+    if (ref === undefined) {
+      if (record.providerPrincipalDigest !== undefined) {
+        throw new PrincipalConflictError(record.operationId);
+      }
+      return record;
+    }
+    assertProviderPrincipalRef(ref);
+    const digest = principalDigestOf(ref);
+    if (record.providerPrincipalDigest === undefined) {
+      const bound = await this.#update(record, { providerPrincipalDigest: digest });
+      if (bound !== undefined) return bound;
+      return this.#applyPrincipalBinding(await this.#reload(record.operationId), options);
+    }
+    if (record.providerPrincipalDigest !== digest) {
+      throw new PrincipalConflictError(record.operationId);
+    }
+    return record;
+  }
+
   async #markUncertain(
     record: OperationRecord,
     reason: string,
@@ -756,6 +796,21 @@ function directIdentity<I extends JsonValue, O extends JsonValue>(
     return { source: "direct", scope: "process", callId: randomUUID() };
   }
   throw new IdentityRequiredError();
+}
+
+function principalDigestOf(ref: ProviderPrincipalRef): string {
+  return digestJson({ namespace: ref.namespace, subject: ref.subject });
+}
+
+function assertProviderPrincipalRef(ref: ProviderPrincipalRef): void {
+  for (const [name, value] of [
+    ["namespace", ref.namespace],
+    ["subject", ref.subject],
+  ] as const) {
+    if (typeof value !== "string" || value.length === 0 || value.length > 256) {
+      throw new TypeError(`Provider principal ${name} must be a string of 1 to 256 characters`);
+    }
+  }
 }
 
 function assertInvocationIdentity(identity: InvocationIdentity): void {

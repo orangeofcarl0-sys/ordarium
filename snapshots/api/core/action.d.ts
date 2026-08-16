@@ -1,6 +1,6 @@
 import type { EffectProfile } from "./effects.js";
 import type { ActionSchema, JsonValue } from "./json.js";
-import type { AuthorizationDecision, InvocationIdentity, SafeError } from "./types.js";
+import type { AuthorizationDecision, InvocationIdentity, ProviderPrincipalRef, SafeError } from "./types.js";
 export interface ActionExecutionContext {
     operationId: string;
     idempotencyKey: string;
@@ -30,6 +30,7 @@ export type ReconcileResult<O extends JsonValue> = {
 export interface ActionRunOptions {
     identity?: InvocationIdentity | undefined;
     authorization?: AuthorizationDecision | undefined;
+    providerPrincipalRef?: ProviderPrincipalRef | undefined;
     signal?: AbortSignal | undefined;
 }
 export interface ActionRunner {

@@ -9,6 +9,16 @@ export interface InvocationIdentity {
     actor?: string | undefined;
     lineage?: string[] | undefined;
 }
+/**
+ * Transient reference to the Provider principal a credential resolves to.
+ * It lives in memory only; records persist at most its canonical digest,
+ * which acts as a continuity conflict field for the same operation
+ * (docs/13 §2): recovery must resolve to the same principal or fail closed.
+ */
+export interface ProviderPrincipalRef {
+    readonly namespace: string;
+    readonly subject: string;
+}
 export type AuthorizationEvidenceKind = "host-admission" | "policy-decision" | "human-approval";
 export interface AuthorizationDecision {
     decision: "allow" | "deny";
@@ -52,6 +62,7 @@ export interface OperationRecord {
     createdAt: string;
     updatedAt: string;
     authorization?: AuthorizationRecord | undefined;
+    providerPrincipalDigest?: string | undefined;
     claim?: OperationClaim | undefined;
     resumeFrom?: "authorized" | "dispatched" | "uncertain" | undefined;
     result?: JsonValue | undefined;

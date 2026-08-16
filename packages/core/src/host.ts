@@ -1,16 +1,22 @@
 import type { Action } from "./action.js";
 import type { JsonValue } from "./json.js";
-import type { AuthorizationDecision, InvocationIdentity } from "./types.js";
+import type {
+  AuthorizationDecision,
+  InvocationIdentity,
+  ProviderPrincipalRef,
+} from "./types.js";
 
 /**
  * The frozen boundary a host adapter uses to enter @ordarium/core
  * (ARCH-3 decision 8). Hosts must provide stable invocation identity;
- * classified authorization evidence and cancellation are optional.
- * No host-specific types may travel through this contract.
+ * classified authorization evidence, the transient provider principal
+ * reference and cancellation are optional. No host-specific types may
+ * travel through this contract.
  */
 export interface HostInvocation {
   readonly identity: InvocationIdentity;
   readonly authorization?: AuthorizationDecision | undefined;
+  readonly providerPrincipalRef?: ProviderPrincipalRef | undefined;
   readonly signal?: AbortSignal | undefined;
 }
 

@@ -1,4 +1,4 @@
-import { type Action, type AuthorizationDecision, type HostInvocationPort, type InvocationIdentity, type JsonValue, type OperationRecord, type RuntimeCheckpoint, type RuntimeHooks } from "@ordarium/core";
+import { type Action, type AuthorizationDecision, type HostInvocationPort, type InvocationIdentity, type JsonValue, type OperationRecord, type ProviderPrincipalRef, type RuntimeCheckpoint, type RuntimeHooks } from "@ordarium/core";
 export declare class FaultInjector implements RuntimeHooks {
     #private;
     crashAt(checkpoint: RuntimeCheckpoint, times?: number): this;
@@ -17,6 +17,7 @@ export interface HostHarnessCallOptions {
     actor?: string | undefined;
     lineage?: string[] | undefined;
     authorization?: AuthorizationDecision | undefined;
+    providerPrincipalRef?: ProviderPrincipalRef | undefined;
     signal?: AbortSignal | undefined;
 }
 export interface HostAdapterHarnessOptions {

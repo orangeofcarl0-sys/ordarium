@@ -26,6 +26,16 @@ export class AuthorizationConflictError extends OrdariumError {
   }
 }
 
+export class PrincipalConflictError extends OrdariumError {
+  constructor(operationId: string) {
+    super(
+      "PRINCIPAL_CONFLICT",
+      "The operation is bound to a different provider principal; refusing to continue it",
+      operationId,
+    );
+  }
+}
+
 export class IdentityRequiredError extends OrdariumError {
   constructor() {
     super(

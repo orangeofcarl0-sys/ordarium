@@ -320,6 +320,7 @@ const authorized = {
   state: "authorized",
   revision: 1,
   authorization: { decision: "allow", kind: "host-admission", source: "fixture:admission", at: "2026-01-01T00:00:01.000Z" },
+  providerPrincipalDigest: "c".repeat(64),
   updatedAt: "2026-01-01T00:00:01.000Z",
 };
 

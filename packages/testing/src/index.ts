@@ -7,6 +7,7 @@ import {
   type InvocationIdentity,
   type JsonValue,
   type OperationRecord,
+  type ProviderPrincipalRef,
   type RuntimeCheckpoint,
   type RuntimeHooks,
 } from "@ordarium/core";
@@ -61,6 +62,7 @@ export interface HostHarnessCallOptions {
   actor?: string | undefined;
   lineage?: string[] | undefined;
   authorization?: AuthorizationDecision | undefined;
+  providerPrincipalRef?: ProviderPrincipalRef | undefined;
   signal?: AbortSignal | undefined;
 }
 
@@ -104,6 +106,9 @@ export class HostAdapterHarness {
     const invocation: HostInvocation = {
       identity,
       ...(options.authorization === undefined ? {} : { authorization: options.authorization }),
+      ...(options.providerPrincipalRef === undefined
+        ? {}
+        : { providerPrincipalRef: options.providerPrincipalRef }),
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     };
     return this.#port.invoke(action, input, invocation);
