@@ -105,6 +105,10 @@ Ledger 不保存 raw input、raw business key、credential、任意 stack 或未
 - workflow、subagent scheduler 或 Palimpsest Runtime；
 - 默认多主机 authority、分布式共识或 secret vault。
 
+## 开发者文档
+
+写插件、选 profile、查报错、做运维——十篇按角色组织的指南（快速开始、核心概念、effect profiles、错误码全表、授权、ledger、运维面、宿主、测试、生命周期与恢复）：**[docs/dev/](docs/dev/README.md)**。不需要先读维护合同 12–17。
+
 ## 安装（GitHub 分发）
 
 分发渠道为 GitHub（DSH 插件生态惯例；分发决议见 `evidence/G7/release-candidate-report.md` §5）。本工程已拆分为独立仓库（https://github.com/orangeofcarl0-sys/ordarium），五包位于 `packages/`，版本锚为 git tag（首个 `ordarium-v1.0.0`）与同名 GitHub Release。两种消费方式：

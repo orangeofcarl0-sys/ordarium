@@ -1,6 +1,12 @@
 # Ordarium 文档索引与工程边界
 
-Ordarium 的完整规范、合同与证据链分布如下；本文是 Ordarium 侧的导航入口。Palimpsest 线的规范在仓库根 [Palimpsest 规范 00–11](https://github.com/orangeofcarl0-sys/palimpsest/tree/main/docs)，两线边界见根 [Palimpsest 仓库](https://github.com/orangeofcarl0-sys/palimpsest)。
+Ordarium 的文档分两层：**开发者指南**（`dev/`，面向使用者的可读投影）与**维护/审计合同**（12–17，权威规范）。两层冲突时以 12–17 为准。Palimpsest 线的规范在仓库根 [Palimpsest 规范 00–11](https://github.com/orangeofcarl0-sys/palimpsest/tree/main/docs)，两线边界见根 [Palimpsest 仓库](https://github.com/orangeofcarl0-sys/palimpsest)。
+
+## 开发者文档（从 [`dev/`](dev/README.md) 进入）
+
+十篇按角色组织的指南：快速开始、核心概念、effect profiles、**错误码表**（案头参考）、授权、ledger 选择、运维面、宿主（DSH/MCP/自建）、测试套件、生命周期与恢复。写插件、选 profile、查报错、做运维都从这里走，不需要先读 12–17。
+
+## 维护与审计合同（权威）
 
 | 文档 | 作用 | 地位 |
 |---|---|---|
