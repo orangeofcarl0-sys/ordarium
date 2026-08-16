@@ -1,3 +1,4 @@
+import { decodeOperationRecord } from "./codec.js";
 import type {
   OperationEvent,
   OperationLedger,
@@ -15,15 +16,15 @@ export class MemoryLedger implements OperationLedger {
 
   async get(operationId: string): Promise<OperationRecord | undefined> {
     const record = this.#records.get(operationId);
-    return record === undefined ? undefined : clone(record);
+    return record === undefined ? undefined : clone(decodeOperationRecord(record));
   }
 
   async create(record: OperationRecord): Promise<{ created: boolean; record: OperationRecord }> {
     const current = this.#records.get(record.operationId);
     if (current !== undefined) {
-      return { created: false, record: clone(current) };
+      return { created: false, record: clone(decodeOperationRecord(current)) };
     }
-    const saved = clone(record);
+    const saved = clone(decodeOperationRecord(record));
     this.#records.set(record.operationId, saved);
     this.#events.set(record.operationId, [this.#event(saved)]);
     return { created: true, record: clone(saved) };
@@ -43,7 +44,7 @@ export class MemoryLedger implements OperationLedger {
     ) {
       return false;
     }
-    const saved = clone(next);
+    const saved = clone(decodeOperationRecord(next));
     this.#records.set(operationId, saved);
     const events = this.#events.get(operationId) ?? [];
     events.push(this.#event(saved));
@@ -52,7 +53,11 @@ export class MemoryLedger implements OperationLedger {
   }
 
   async history(operationId: string): Promise<OperationEvent[]> {
-    return clone(this.#events.get(operationId) ?? []);
+    const events = this.#events.get(operationId) ?? [];
+    return events.map((event) => ({
+      ...event,
+      record: clone(decodeOperationRecord(event.record)),
+    }));
   }
 
   async list(filter: OperationListFilter = {}): Promise<OperationRecord[]> {
@@ -62,7 +67,7 @@ export class MemoryLedger implements OperationLedger {
       .filter((record) => filter.state === undefined || record.state === filter.state)
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
       .slice(0, limit)
-      .map(clone);
+      .map((record) => clone(decodeOperationRecord(record)));
   }
 
   #event(record: OperationRecord): OperationEvent {

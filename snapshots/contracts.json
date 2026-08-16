@@ -69,7 +69,7 @@
       "nodeBuiltins": [
         "node:crypto"
       ],
-      "relativeImportCount": 8
+      "relativeImportCount": 9
     },
     "@ordarium/dsh": {
       "workspace": [
@@ -110,6 +110,7 @@
     "AUTHORIZATION_CONFLICT",
     "AUTHORIZATION_REQUIRED",
     "IDENTITY_REQUIRED",
+    "INPUT_TOO_LARGE",
     "OPERATION_BUSY",
     "OPERATION_CANCELLED",
     "OPERATION_CONFLICT",

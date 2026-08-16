@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
+import { decodeOperationRecord } from "@ordarium/core";
 import type {
   OperationEvent,
   OperationLedger,
@@ -12,25 +13,6 @@ import type {
 
 const APPLICATION_ID = 0x4f524441; // ASCII "ORDA"
 const LEDGER_SCHEMA_VERSION = 1;
-const OPERATION_STATES = new Set([
-  "proposed",
-  "authorized",
-  "denied",
-  "claimed",
-  "dispatched",
-  "succeeded",
-  "failed",
-  "cancelled",
-  "uncertain",
-  "reconciled",
-]);
-const GUARANTEES = new Set([
-  "read-only",
-  "guarded",
-  "idempotent",
-  "reconcilable",
-  "unmanaged",
-]);
 
 export interface SqliteLedgerOptions {
   timeoutMs?: number | undefined;
@@ -102,7 +84,7 @@ export class SqliteLedger implements OperationLedger {
 
   async create(record: OperationRecord): Promise<{ created: boolean; record: OperationRecord }> {
     this.#assertOpen();
-    assertOperationRecord(record);
+    decodeOperationRecord(record);
     this.#begin();
     try {
       const current = this.#database
@@ -136,7 +118,7 @@ export class SqliteLedger implements OperationLedger {
     if (next.operationId !== operationId || next.revision !== expectedRevision + 1) {
       return false;
     }
-    assertOperationRecord(next);
+    decodeOperationRecord(next);
 
     this.#begin();
     try {
@@ -231,9 +213,7 @@ export class SqliteLedger implements OperationLedger {
   }
 
   #parseRecord(value: unknown): OperationRecord {
-    const parsed: unknown = JSON.parse(this.#string(value));
-    assertOperationRecord(parsed);
-    return parsed;
+    return decodeOperationRecord(JSON.parse(this.#string(value)));
   }
 
   #string(value: unknown): string {
@@ -275,53 +255,6 @@ export class SqliteLedger implements OperationLedger {
   #assertOpen(): void {
     if (this.#closed) {
       throw new Error("SqliteLedger is closed");
-    }
-  }
-}
-
-function assertOperationRecord(value: unknown): asserts value is OperationRecord {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new TypeError("Ordarium operation record must be an object");
-  }
-  const record = value as Record<string, unknown>;
-  if (record.schemaVersion !== 1) {
-    throw new TypeError("Unsupported Ordarium operation record schema");
-  }
-  for (const key of [
-    "operationId",
-    "actionName",
-    "actionVersion",
-    "inputDigest",
-    "logicalKeyDigest",
-    "createdAt",
-    "updatedAt",
-  ]) {
-    if (typeof record[key] !== "string" || (record[key] as string).length === 0) {
-      throw new TypeError(`Invalid Ordarium operation record field: ${key}`);
-    }
-  }
-  if (!OPERATION_STATES.has(String(record.state))) {
-    throw new TypeError("Invalid Ordarium operation state");
-  }
-  if (!GUARANTEES.has(String(record.guarantee))) {
-    throw new TypeError("Invalid Ordarium guarantee level");
-  }
-  for (const key of ["revision", "attempts", "lastFencingToken"]) {
-    if (!Number.isSafeInteger(record[key]) || (record[key] as number) < 0) {
-      throw new TypeError(`Invalid Ordarium operation integer: ${key}`);
-    }
-  }
-  if (!Number.isFinite(Date.parse(record.createdAt as string)) ||
-      !Number.isFinite(Date.parse(record.updatedAt as string))) {
-    throw new TypeError("Invalid Ordarium operation timestamp");
-  }
-  if (record.identity === null || typeof record.identity !== "object") {
-    throw new TypeError("Invalid Ordarium invocation identity");
-  }
-  const identity = record.identity as Record<string, unknown>;
-  for (const key of ["source", "scope", "callId"]) {
-    if (typeof identity[key] !== "string" || (identity[key] as string).length === 0) {
-      throw new TypeError(`Invalid Ordarium invocation identity field: ${key}`);
     }
   }
 }

@@ -1,4 +1,5 @@
 export * from "./action.js";
+export * from "./codec.js";
 export * from "./effects.js";
 export * from "./errors.js";
 export * from "./host.js";

@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 import {
   OperationBusyError,
@@ -108,5 +109,41 @@ describe("SqliteLedger", () => {
     expect(calls).toBe(1);
     await first.close();
     await second.close();
+  });
+
+  it("fails closed when a stored record is corrupt (G1-A06)", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "ordarium-sqlite-corrupt-"));
+    directories.push(directory);
+    const path = join(directory, "operations.sqlite");
+
+    const ledger = new SqliteLedger(path);
+    const corrupt = {
+      schemaVersion: 1,
+      operationId: `op_${"9".repeat(40)}`,
+      actionName: "sqlite.corrupt",
+      actionVersion: "1",
+      inputDigest: "a".repeat(64),
+      logicalKeyDigest: "b".repeat(64),
+      identity: { source: "test", scope: "sqlite", callId: "bad" },
+      guarantee: "guarded",
+      state: "succeeded",
+      revision: 1,
+      attempts: 1,
+      lastFencingToken: 0,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    const raw = new DatabaseSync(path);
+    raw.prepare(`
+      INSERT INTO ordarium_operations(operation_id, revision, state, updated_at, record_json)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(corrupt.operationId, 1, "succeeded", corrupt.updatedAt, JSON.stringify(corrupt));
+    raw.close();
+    ledger.close();
+
+    const reopened = new SqliteLedger(path);
+    await expect(reopened.get(corrupt.operationId)).rejects.toThrow(/Corrupt/u);
+    await expect(reopened.list()).rejects.toThrow();
+    reopened.close();
   });
 });

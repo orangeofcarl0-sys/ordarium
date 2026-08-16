@@ -99,6 +99,15 @@ export class PersistedValueTooLargeError extends OrdariumError {
   }
 }
 
+export class InputTooLargeError extends OrdariumError {
+  constructor(limit: number) {
+    super(
+      "INPUT_TOO_LARGE",
+      `Action input exceeds the ${limit}-byte canonical JSON limit`,
+    );
+  }
+}
+
 export class SimulatedProcessCrash extends OrdariumError {
   constructor(operationId?: string) {
     super("SIMULATED_PROCESS_CRASH", "Simulated process crash", operationId);

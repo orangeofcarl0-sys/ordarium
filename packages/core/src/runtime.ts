@@ -12,6 +12,7 @@ import {
   AuthorizationConflictError,
   AuthorizationRequiredError,
   IdentityRequiredError,
+  InputTooLargeError,
   OperationBusyError,
   OperationCancelledError,
   OperationConflictError,
@@ -21,6 +22,7 @@ import {
   SimulatedProcessCrash,
   UncertainOperationError,
 } from "./errors.js";
+import { RESOURCE_LIMITS } from "./codec.js";
 import { assertJsonValue, canonicalJson, digestJson, type JsonValue } from "./json.js";
 import {
   hasExternalSideEffect,
@@ -110,6 +112,10 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
   ): Promise<O> {
     const input = action.input.parse(unknownInput);
     assertJsonValue(input, "action input");
+    const inputBytes = Buffer.byteLength(canonicalJson(input), "utf8");
+    if (inputBytes > RESOURCE_LIMITS.maxInputJsonBytes) {
+      throw new InputTooLargeError(RESOURCE_LIMITS.maxInputJsonBytes);
+    }
     const identity = options.identity ?? directIdentity(action);
     assertInvocationIdentity(identity);
     if (options.providerPrincipalRef !== undefined) {
@@ -819,18 +825,42 @@ function assertInvocationIdentity(identity: InvocationIdentity): void {
     ["scope", identity.scope],
     ["callId", identity.callId],
   ] as const) {
-    if (typeof value !== "string" || value.length === 0) {
-      throw new TypeError(`Invocation identity ${name} must be a non-empty string`);
+    if (
+      typeof value !== "string" ||
+      value.length === 0 ||
+      value.length > RESOURCE_LIMITS.maxIdentityFieldLength
+    ) {
+      throw new TypeError(
+        `Invocation identity ${name} must be a string of 1 to ${RESOURCE_LIMITS.maxIdentityFieldLength} characters`,
+      );
     }
   }
-  if (identity.rootCallId !== undefined && identity.rootCallId.length === 0) {
-    throw new TypeError("Invocation identity rootCallId must not be empty");
+  if (
+    identity.rootCallId !== undefined &&
+    (identity.rootCallId.length === 0 || identity.rootCallId.length > RESOURCE_LIMITS.maxIdentityFieldLength)
+  ) {
+    throw new TypeError("Invocation identity rootCallId must be a non-empty bounded string");
   }
-  if (identity.actor !== undefined && identity.actor.length === 0) {
-    throw new TypeError("Invocation identity actor must not be empty");
+  if (
+    identity.actor !== undefined &&
+    (identity.actor.length === 0 || identity.actor.length > RESOURCE_LIMITS.maxIdentityFieldLength)
+  ) {
+    throw new TypeError("Invocation identity actor must be a non-empty bounded string");
   }
-  if (identity.lineage?.some((item) => typeof item !== "string" || item.length === 0)) {
-    throw new TypeError("Invocation identity lineage must contain non-empty strings");
+  if (identity.lineage !== undefined) {
+    if (
+      identity.lineage.length > RESOURCE_LIMITS.maxLineageEntries ||
+      identity.lineage.some(
+        (item) =>
+          typeof item !== "string" ||
+          item.length === 0 ||
+          item.length > RESOURCE_LIMITS.maxIdentityFieldLength,
+      )
+    ) {
+      throw new TypeError(
+        `Invocation identity lineage must contain at most ${RESOURCE_LIMITS.maxLineageEntries} non-empty bounded strings`,
+      );
+    }
   }
 }
 

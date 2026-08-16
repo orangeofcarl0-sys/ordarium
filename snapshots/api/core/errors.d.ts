@@ -36,6 +36,9 @@ export declare class UncertainOperationError extends OrdariumError {
 export declare class PersistedValueTooLargeError extends OrdariumError {
     constructor(operationId: string, label: string, limit: number);
 }
+export declare class InputTooLargeError extends OrdariumError {
+    constructor(limit: number);
+}
 export declare class SimulatedProcessCrash extends OrdariumError {
     constructor(operationId?: string);
 }
