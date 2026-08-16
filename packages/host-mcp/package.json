@@ -1,8 +1,8 @@
 {
   "name": "@ordarium/host-mcp",
-  "version": "0.2.0",
+  "version": "1.0.0-rc.1",
   "description": "Model Context Protocol host adapter exposing Ordarium Safe Actions as MCP tools",
-  "private": true,
+  "private": false,
   "type": "module",
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
@@ -22,5 +22,9 @@
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@ordarium/dsh": "workspace:*"
-  }
+  },
+  "license": "MIT",
+  "files": [
+    "dist/src"
+  ]
 }

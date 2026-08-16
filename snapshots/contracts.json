@@ -3,7 +3,7 @@
   "frozenAt": "G0",
   "packages": {
     "@ordarium/core": {
-      "version": "0.2.0",
+      "version": "1.0.0-rc.1",
       "workspaceDependencies": [],
       "externalDependencies": [],
       "exports": {
@@ -12,10 +12,10 @@
           "import": "./dist/src/index.js"
         }
       },
-      "private": true
+      "private": false
     },
     "@ordarium/dsh": {
-      "version": "0.2.0",
+      "version": "1.0.0-rc.1",
       "workspaceDependencies": [
         "@ordarium/core",
         "@ordarium/ledger-sqlite"
@@ -31,10 +31,10 @@
           "import": "./dist/src/advanced.js"
         }
       },
-      "private": true
+      "private": false
     },
     "@ordarium/host-mcp": {
-      "version": "0.2.0",
+      "version": "1.0.0-rc.1",
       "workspaceDependencies": [
         "@ordarium/core",
         "@ordarium/ledger-sqlite"
@@ -46,10 +46,10 @@
           "import": "./dist/src/index.js"
         }
       },
-      "private": true
+      "private": false
     },
     "@ordarium/ledger-sqlite": {
-      "version": "0.2.0",
+      "version": "1.0.0-rc.1",
       "workspaceDependencies": [
         "@ordarium/core"
       ],
@@ -60,10 +60,10 @@
           "import": "./dist/src/index.js"
         }
       },
-      "private": true
+      "private": false
     },
     "@ordarium/testing": {
-      "version": "0.2.0",
+      "version": "1.0.0-rc.1",
       "workspaceDependencies": [
         "@ordarium/core"
       ],
@@ -74,7 +74,7 @@
           "import": "./dist/src/index.js"
         }
       },
-      "private": true
+      "private": false
     }
   },
   "importScan": {

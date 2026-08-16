@@ -15,6 +15,11 @@
     "check": "pnpm run test",
     "verify:architecture": "node tools/verify-architecture.mjs",
     "verify:matrix": "node tools/node-matrix.mjs",
+    "verify:docs": "node tools/verify-docs.mjs",
+    "verify:release": "node tools/verify-release.mjs",
+    "test:integration": "pnpm run build && vitest run packages/ledger-sqlite packages/host-mcp packages/dsh",
+    "test:conformance": "pnpm run build && vitest run packages/testing",
+    "test:package": "node tools/package-consumer.mjs",
     "snapshots:update": "node tools/verify-architecture.mjs --update"
   },
   "devDependencies": {
