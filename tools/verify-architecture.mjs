@@ -32,6 +32,22 @@ const expectedPackages = {
   "@ordarium/testing": { workspaceDeps: ["@ordarium/core"], externalDeps: [] },
 };
 
+// Host adapter leaf packages (G5 design spec §4): they may carry a host
+// protocol surface and depend only on the kernel and the default ledger.
+// Kernel packages may never depend on them.
+const leafPackageRules = {
+  "@ordarium/host-mcp": { workspaceDeps: ["@ordarium/core", "@ordarium/ledger-sqlite"] },
+};
+
+function packageRule(name) {
+  if (expectedPackages[name] !== undefined) {
+    return { ...expectedPackages[name], leaf: false };
+  }
+  const leaf = leafPackageRules[name];
+  if (leaf !== undefined) return { ...leaf, externalDeps: null, leaf: true };
+  return undefined;
+}
+
 const failures = [];
 const notes = [];
 function fail(message) {
@@ -116,7 +132,7 @@ for (const name of Object.keys(expectedPackages)) {
   if (discovered[name] === undefined) fail(`expected package is missing: ${name}`);
 }
 for (const name of Object.keys(discovered)) {
-  if (expectedPackages[name] === undefined) fail(`unexpected package outside the frozen set: ${name}`);
+  if (packageRule(name) === undefined) fail(`unexpected package outside the frozen kernel/leaf rules: ${name}`);
 }
 
 const fromClause = /\bfrom\s+["']([^"']+)["']/g;
@@ -155,7 +171,7 @@ for (const [name, directory] of Object.entries(discovered)) {
     private: manifest.private === true,
   };
 
-  const rule = expectedPackages[name] ?? { workspaceDeps: null, externalDeps: null };
+  const rule = packageRule(name) ?? { workspaceDeps: null, externalDeps: null };
   if (rule.workspaceDeps !== null) {
     for (const dep of graph[name].workspaceDependencies) {
       if (!rule.workspaceDeps.includes(dep)) {

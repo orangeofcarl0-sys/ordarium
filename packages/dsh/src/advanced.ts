@@ -10,6 +10,7 @@ import {
   type InvocationIdentity,
   type JsonObject,
   type JsonValue,
+  type ProviderPrincipalRef,
 } from "@ordarium/core";
 import { SqliteLedger } from "@ordarium/ledger-sqlite";
 
@@ -18,7 +19,13 @@ export interface DshTextContent {
   text: string;
 }
 
-export type DshContentBlock = DshTextContent;
+/**
+ * Structural content block (G5 design spec §1): the default renderer emits
+ * text blocks, but custom renderers may return any host-native block shape
+ * - the adapter no longer restricts them to a private text-only union
+ * (COMPAT-DSH-001).
+ */
+export type DshContentBlock = { readonly type: string } & Record<string, unknown>;
 
 export interface DshToolRunContext {
   readonly callId: string;
@@ -72,6 +79,10 @@ export interface DshActionOptions<I extends JsonValue, O extends JsonValue> {
   scopeId?: string | ((context: DshToolRunContext) => string) | undefined;
   actor?: ((context: DshToolRunContext) => string | undefined) | undefined;
   lineage?: ((context: DshToolRunContext) => string[] | undefined) | undefined;
+  /** Transient provider principal resolved from host context (digest-only persistence). */
+  providerPrincipalRef?:
+    | ((context: DshToolRunContext) => ProviderPrincipalRef | undefined)
+    | undefined;
   render?: ((input: I, value: O) => DshContentBlock[]) | undefined;
   timeoutMs?: number | undefined;
   isConcurrencySafe?: ((input: I) => boolean) | undefined;
@@ -119,10 +130,12 @@ export function asDshTool<I extends JsonValue, O extends JsonValue>(
             reason: "DSH admitted the tool body; this is not evidence of explicit human approval",
           })
         : undefined;
+      const providerPrincipalRef = options.providerPrincipalRef?.(context);
       const invocation: HostInvocation = {
         identity,
         signal: context.signal,
         ...(authorization === undefined ? {} : { authorization }),
+        ...(providerPrincipalRef === undefined ? {} : { providerPrincipalRef }),
       };
       return action.run(options.runtime, input, invocation);
     },
@@ -163,16 +176,29 @@ export function registerActions(
   };
 }
 
+/**
+ * Session recovery material binding (G5 design spec §3, source priority 1):
+ * the host resolves the original invocation arguments by identity so G4's
+ * reconcileOnly can verify them against the durable digests.
+ */
+export type DshRecoveryMaterialResolver = (invocation: {
+  source: string;
+  scope: string;
+  callId: string;
+}) => Promise<unknown | undefined> | unknown | undefined;
+
 export interface CreateDshOrdariumOptions {
   databasePath?: string | undefined;
   runtime?: OrdariumRuntime | undefined;
   authorize?: DshAuthorizer | undefined;
   scopeId?: string | ((context: DshToolRunContext) => string) | undefined;
+  recoveryMaterial?: DshRecoveryMaterialResolver | undefined;
 }
 
 export interface DshOrdarium {
   readonly runtime: OrdariumRuntime;
   readonly databasePath?: string | undefined;
+  readonly recoveryMaterial?: DshRecoveryMaterialResolver | undefined;
   tool<I extends JsonValue, O extends JsonValue>(
     action: Action<I, O>,
     options?: Omit<DshActionOptions<I, O>, "authorize" | "runtime" | "scopeId">,
@@ -193,6 +219,7 @@ export function createDshOrdarium(options: CreateDshOrdariumOptions = {}): DshOr
   return {
     runtime,
     databasePath,
+    ...(options.recoveryMaterial === undefined ? {} : { recoveryMaterial: options.recoveryMaterial }),
     tool(action, toolOptions = {}) {
       return asDshTool(action, {
         runtime,

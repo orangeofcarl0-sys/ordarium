@@ -33,6 +33,21 @@
       },
       "private": true
     },
+    "@ordarium/host-mcp": {
+      "version": "0.2.0",
+      "workspaceDependencies": [
+        "@ordarium/core",
+        "@ordarium/ledger-sqlite"
+      ],
+      "externalDependencies": [],
+      "exports": {
+        ".": {
+          "types": "./dist/src/index.d.ts",
+          "import": "./dist/src/index.js"
+        }
+      },
+      "private": true
+    },
     "@ordarium/ledger-sqlite": {
       "version": "0.2.0",
       "workspaceDependencies": [
@@ -82,6 +97,17 @@
         "node:path"
       ],
       "relativeImportCount": 2
+    },
+    "@ordarium/host-mcp": {
+      "workspace": [
+        "@ordarium/core",
+        "@ordarium/ledger-sqlite"
+      ],
+      "external": [],
+      "nodeBuiltins": [
+        "node:readline"
+      ],
+      "relativeImportCount": 0
     },
     "@ordarium/ledger-sqlite": {
       "workspace": [

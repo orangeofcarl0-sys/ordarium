@@ -1,9 +1,17 @@
-import { OrdariumRuntime, type Action, type AuthorizationDecision, type JsonObject, type JsonValue } from "@ordarium/core";
+import { OrdariumRuntime, type Action, type AuthorizationDecision, type JsonObject, type JsonValue, type ProviderPrincipalRef } from "@ordarium/core";
 export interface DshTextContent {
     type: "text";
     text: string;
 }
-export type DshContentBlock = DshTextContent;
+/**
+ * Structural content block (G5 design spec §1): the default renderer emits
+ * text blocks, but custom renderers may return any host-native block shape
+ * - the adapter no longer restricts them to a private text-only union
+ * (COMPAT-DSH-001).
+ */
+export type DshContentBlock = {
+    readonly type: string;
+} & Record<string, unknown>;
 export interface DshToolRunContext {
     readonly callId: string;
     readonly rootCallId: string;
@@ -47,6 +55,8 @@ export interface DshActionOptions<I extends JsonValue, O extends JsonValue> {
     scopeId?: string | ((context: DshToolRunContext) => string) | undefined;
     actor?: ((context: DshToolRunContext) => string | undefined) | undefined;
     lineage?: ((context: DshToolRunContext) => string[] | undefined) | undefined;
+    /** Transient provider principal resolved from host context (digest-only persistence). */
+    providerPrincipalRef?: ((context: DshToolRunContext) => ProviderPrincipalRef | undefined) | undefined;
     render?: ((input: I, value: O) => DshContentBlock[]) | undefined;
     timeoutMs?: number | undefined;
     isConcurrencySafe?: ((input: I) => boolean) | undefined;
@@ -59,15 +69,27 @@ export interface RegisterActionsOptions {
     scopeId?: string | ((context: DshToolRunContext) => string) | undefined;
 }
 export declare function registerActions(context: DshPluginContext, actions: readonly AnyAction[], options: RegisterActionsOptions): () => void;
+/**
+ * Session recovery material binding (G5 design spec §3, source priority 1):
+ * the host resolves the original invocation arguments by identity so G4's
+ * reconcileOnly can verify them against the durable digests.
+ */
+export type DshRecoveryMaterialResolver = (invocation: {
+    source: string;
+    scope: string;
+    callId: string;
+}) => Promise<unknown | undefined> | unknown | undefined;
 export interface CreateDshOrdariumOptions {
     databasePath?: string | undefined;
     runtime?: OrdariumRuntime | undefined;
     authorize?: DshAuthorizer | undefined;
     scopeId?: string | ((context: DshToolRunContext) => string) | undefined;
+    recoveryMaterial?: DshRecoveryMaterialResolver | undefined;
 }
 export interface DshOrdarium {
     readonly runtime: OrdariumRuntime;
     readonly databasePath?: string | undefined;
+    readonly recoveryMaterial?: DshRecoveryMaterialResolver | undefined;
     tool<I extends JsonValue, O extends JsonValue>(action: Action<I, O>, options?: Omit<DshActionOptions<I, O>, "authorize" | "runtime" | "scopeId">): DshToolDefinition<I, O>;
     register(context: DshPluginContext, actions: readonly AnyAction[]): () => void;
     close(): Promise<void>;

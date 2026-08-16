@@ -4,6 +4,7 @@
     { "path": "./packages/core" },
     { "path": "./packages/ledger-sqlite" },
     { "path": "./packages/dsh" },
-    { "path": "./packages/testing" }
+    { "path": "./packages/testing" },
+    { "path": "./packages/host-mcp" }
   ]
 }

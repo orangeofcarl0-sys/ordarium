@@ -29,6 +29,19 @@ importers:
         specifier: workspace:*
         version: link:../ledger-sqlite
 
+  packages/host-mcp:
+    dependencies:
+      '@ordarium/core':
+        specifier: workspace:*
+        version: link:../core
+      '@ordarium/ledger-sqlite':
+        specifier: workspace:*
+        version: link:../ledger-sqlite
+    devDependencies:
+      '@ordarium/dsh':
+        specifier: workspace:*
+        version: link:../dsh
+
   packages/ledger-sqlite:
     dependencies:
       '@ordarium/core':
