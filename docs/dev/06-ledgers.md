@@ -1,6 +1,6 @@
 # 06 · Ledger 选择
 
-SQLite 不是 core 的语义依赖——core 只认 `OperationLedgerPort + LedgerCapabilities`。选 ledger = 选你能诚实承诺的能力。
+SQLite 不是 core 的语义依赖——core 只认 `OperationLedger` 端口 + `LedgerCapabilities`。选 ledger = 选你能诚实承诺的能力。
 
 ## 两个内置实现
 
@@ -30,7 +30,7 @@ const runtime = new OrdariumRuntime({ allowVolatileLedger: true });
 
 ## 自定义 ledger（高级）
 
-实现完整的 `OperationLedgerPort`（能力声明、语义 CAS + fence 验证、原子 claim+lease、轻量续租、cursor 分页、v2 记录 codec）并通过 conformance 后即可替换。**不要**建立第二套记录/状态语义。
+实现完整的 `OperationLedger`（能力声明、语义 CAS + fence 验证、原子 claim+lease、轻量续租、cursor 分页、v2 记录 codec）并通过 conformance 后即可替换。**不要**建立第二套记录/状态语义。
 
 ## 运维注意
 

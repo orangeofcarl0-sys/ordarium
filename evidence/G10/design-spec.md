@@ -20,7 +20,7 @@
 | `01-getting-started.md` | 两种安装方式（同 workspace / Release 五 tarball）、首个 Action 完整可运行示例、golden path、一次调用内部发生什么、数据库位置 |
 | `02-core-concepts.md` | 五对象（Action/Invocation/Operation/Attempt/External effect）、identity 推导、状态机图、uncertain 哲学、Secret 边界（ledger 存什么/不存什么） |
 | `03-effect-profiles.md` | 五 profile 决策树 + 逐项详解（含 finite window 冻结语义）、profile↔Provider 能力配对 |
-| `04-errors.md` | 全部 26 个错误码分组表：含义 + 调用者动作（来源：core/errors.ts + snapshots/contracts.json） |
+| `04-errors.md` | 全部 27 个错误码分组表：含义 + 调用者动作（来源：core/errors.ts + snapshots/contracts.json；`ACTION_EXECUTION_FAILED` 与 `SIMULATED_PROCESS_CRASH` 在表下注明） |
 | `05-authorization.md` | 三类 evidence、DSH 默认准入、自定义 authorize、矛盾冲突语义、OperatorAuthorization 独立边界 |
 | `06-ledgers.md` | LedgerCapabilities、SQLite 默认（路径解析）、MemoryLedger 合法用途、能力门、部署拓扑、备份注意 |
 | `07-operations.md` | uncertain 可见性、createOperations、插件壳 createOrdariumPlugin + opt-in ops 工具、双视图脱敏、reconcile-only 与 recovery material |
@@ -31,7 +31,7 @@
 ## 3. 准确性基线（硬规则）
 
 1. 每个代码示例的模式取自**已验证的测试代码**（packages/*/test）；API 名称以 `snapshots/api/*.d.ts` 为准——不得发明不存在的导出或参数；
-2. 错误码全集 = `snapshots/contracts.json` 的 `errorCodes`（26 项），逐项给"调用者动作"（对齐 docs/15 §25 风格）；
+2. 错误码全集 = `snapshots/contracts.json` 的 `errorCodes`（27 项），逐项给"调用者动作"（对齐 docs/15 §25 风格）；
 3. Node 版本陈述与 engines 一致（ledger-sqlite/dsh/host-mcp `>=24.15.0`；core/testing `>=24.0.0`）；
 4. 宣称纪律与 README 相同：不出现无限定的 exactly-once/tamper-proof/强沙箱/完整 Harness 表述（否定式讨论允许）；
 5. 中文行文、代码与标识符英文；每个文档 ≤ 一个核心 mermaid 图。
