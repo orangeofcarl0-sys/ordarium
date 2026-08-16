@@ -27,6 +27,9 @@ export declare class RuntimeQuiescingError extends OrdariumError {
 export declare class RuntimeClosedError extends OrdariumError {
     constructor();
 }
+export declare class IdempotencyExpiredError extends OrdariumError {
+    constructor(operationId: string);
+}
 export declare class ActionDeniedError extends OrdariumError {
     constructor(operationId: string);
 }

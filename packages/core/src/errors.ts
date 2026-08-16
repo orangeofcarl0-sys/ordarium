@@ -79,6 +79,16 @@ export class RuntimeClosedError extends OrdariumError {
   }
 }
 
+export class IdempotencyExpiredError extends OrdariumError {
+  constructor(operationId: string) {
+    super(
+      "IDEMPOTENCY_EXPIRED",
+      "The operation's finite idempotency deadline has passed; only a query or an honest uncertain remains",
+      operationId,
+    );
+  }
+}
+
 export class ActionDeniedError extends OrdariumError {
   constructor(operationId: string) {
     super("ACTION_DENIED", "The action was denied", operationId);

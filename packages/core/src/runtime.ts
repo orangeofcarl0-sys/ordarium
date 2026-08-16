@@ -13,6 +13,7 @@ import {
   AuthorizationConflictError,
   AuthorizationRequiredError,
   ContractDriftError,
+  IdempotencyExpiredError,
   IdentityRequiredError,
   InputTooLargeError,
   LedgerCapabilityRequiredError,
@@ -35,6 +36,11 @@ import {
 } from "./effects.js";
 import { assertJsonValue, canonicalJson, digestJson, type JsonValue } from "./json.js";
 import { MemoryLedger } from "./ledger.js";
+import {
+  evaluateAuthoritativeAbsence,
+  evaluateRecovery,
+  idempotencyDeadlinePassed,
+} from "./recovery.js";
 import type { HostInvocation, HostInvocationPort } from "./host.js";
 import type {
   AuthorizationDecision,
@@ -511,6 +517,12 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
     });
     if (dispatched === undefined) throw new OperationBusyError(claimed.operationId);
 
+    // A frozen finite deadline gates every execution attempt, including the
+    // first (G3 spec §4): past it, only a query or an honest uncertain.
+    if (idempotencyDeadlinePassed(claimed, this.#clock())) {
+      return this.#stopAsUncertain(dispatched, "idempotency-expired");
+    }
+
     await this.#hooks?.checkpoint?.("after-dispatch", dispatched);
     const work = await this.#runWithLease(dispatched, effectiveSignal, async (leaseSignal) => {
       const context = this.#context(dispatched, leaseSignal);
@@ -666,8 +678,15 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
         throw new OperationFailedError(claimed.operationId, outcome.error.message);
       }
 
-      if (outcome.status === "absent" && outcome.retrySafe) {
-        return this.#dispatchAndExecute(action, input, claimed, effectiveSignal);
+      if (outcome.status === "absent") {
+        const absence = evaluateAuthoritativeAbsence(claimed, outcome, "normal", this.#clock());
+        if (absence.kind === "redispatch-same-key") {
+          return this.#dispatchAndExecute(action, input, claimed, effectiveSignal);
+        }
+        return this.#stopAsUncertain(
+          claimed,
+          absence.kind === "stay-uncertain" ? absence.reason : "reconcile-absent",
+        );
       }
 
       const uncertain = await this.#update(claimed, {
@@ -680,13 +699,30 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
       throw new UncertainOperationError(claimed.operationId);
     }
 
-    if (usesOperationKey(action.effect)) {
+    const decision = evaluateRecovery({
+      record: claimed,
+      hasReconcile: false,
+      operationKeyUsable: usesOperationKey(action.effect),
+      mode: "normal",
+      now: this.#clock(),
+    });
+    if (decision.kind === "redispatch-same-key") {
       return this.#dispatchAndExecute(action, input, claimed, effectiveSignal);
     }
+    return this.#stopAsUncertain(
+      claimed,
+      decision.kind === "stay-uncertain" ? decision.reason : "no-safe-recovery-path",
+    );
+  }
 
-    const uncertain = await this.#markUncertain(claimed, "no-safe-recovery-path");
-    if (uncertain === undefined) throw new OperationBusyError(claimed.operationId);
-    throw new UncertainOperationError(claimed.operationId);
+  /** Persist the honest uncertain outcome and surface its stable error. */
+  async #stopAsUncertain(record: OperationRecord, reason: string): Promise<never> {
+    const uncertain = await this.#markUncertain(record, reason);
+    if (uncertain === undefined) throw new OperationBusyError(record.operationId);
+    if (reason === "idempotency-expired") {
+      throw new IdempotencyExpiredError(record.operationId);
+    }
+    throw new UncertainOperationError(record.operationId);
   }
 
   #context(record: OperationRecord, signal: AbortSignal): ActionExecutionContext {
