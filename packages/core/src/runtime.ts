@@ -26,12 +26,12 @@ import {
   UncertainOperationError,
 } from "./errors.js";
 import { RESOURCE_LIMITS } from "./codec.js";
-import { assertJsonValue, canonicalJson, digestJson, type JsonValue } from "./json.js";
 import {
   hasExternalSideEffect,
   requiresAuthorization,
   usesOperationKey,
 } from "./effects.js";
+import { assertJsonValue, canonicalJson, digestJson, type JsonValue } from "./json.js";
 import { MemoryLedger } from "./ledger.js";
 import type { HostInvocation, HostInvocationPort } from "./host.js";
 import type {
@@ -98,12 +98,12 @@ export interface OrdariumRuntimeOptions {
 
 interface InFlight {
   inputDigest: string;
-  promise: Promise<JsonValue>;
+  promise: Promise<unknown>;
 }
 
 type LeaseWorkResult<T> =
-  | { status: "fulfilled"; value: T; record: OperationRecord; leaseLost: boolean }
-  | { status: "rejected"; error: unknown; record: OperationRecord; leaseLost: boolean };
+  | { status: "fulfilled"; value: T; leaseLost: boolean }
+  | { status: "rejected"; error: unknown; leaseLost: boolean };
 
 export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
   readonly ledger: OperationLedger;
@@ -118,11 +118,11 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
   readonly #inFlight = new Map<string, InFlight>();
 
   constructor(options: OrdariumRuntimeOptions = {}) {
-    this.ledger = options.ledger ?? new MemoryLedger();
+    this.#clock = options.clock ?? (() => new Date());
+    this.ledger = options.ledger ?? new MemoryLedger({ clock: this.#clock });
     this.#authorizer = options.authorizer;
     this.#ownerId = options.ownerId ?? `runtime-${randomUUID()}`;
     this.#leaseMs = Math.max(1, options.leaseMs ?? 30_000);
-    this.#clock = options.clock ?? (() => new Date());
     this.#hooks = options.hooks;
     this.#maxPersistedJsonBytes = options.maxPersistedJsonBytes ?? 1_048_576;
     this.#deploymentCoordination = options.deploymentCoordination ?? "single-isolate";
@@ -213,22 +213,24 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
       ? undefined
       : principalDigestOf(options.providerPrincipalRef);
     const created = await this.ledger.create({
-      schemaVersion: 1,
+      schemaVersion: 2,
       operationId,
       actionName: action.name,
       actionVersion: action.version,
+      contractFingerprint: contractFingerprint(action),
       inputDigest,
       logicalKeyDigest,
+      providerPrincipalDigest: principalDigest,
       identity,
-      guarantee: action.effect.kind,
+      effectKind: action.effect.kind,
+      idempotencyMode: usesOperationKey(action.effect) ? "operation-key" : "none",
+      idempotencyExpiresAt: idempotencyDeadlineOf(action, this.#clock),
       state: "proposed",
-      revision: 0,
+      semanticRevision: 0,
       attempts: 0,
       lastFencingToken: 0,
       createdAt: now,
       updatedAt: now,
-      contractFingerprint: contractFingerprint(action),
-      ...(principalDigest === undefined ? {} : { providerPrincipalDigest: principalDigest }),
     });
     let record = created.record;
     this.#assertCompatible(record, action, inputDigest, logicalKeyDigest);
@@ -295,19 +297,7 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
       }
 
       if (record.state === "claimed") {
-        if (record.claim?.owner !== this.#ownerId) {
-          if (record.claim !== undefined && Date.parse(record.claim.expiresAt) > this.#clock().getTime()) {
-            throw new OperationBusyError(operationId);
-          }
-          const reclaimed = await this.#claim(record, record.resumeFrom ?? "uncertain");
-          if (reclaimed === undefined) {
-            record = await this.#reload(operationId);
-            continue;
-          }
-          record = reclaimed;
-        }
-
-        const resumeFrom = record.resumeFrom ?? "uncertain";
+        const resumeFrom = record.claim?.resumeFrom ?? "uncertain";
         if (resumeFrom === "authorized") {
           return this.#dispatchAndExecute(action, input, record, options.signal);
         }
@@ -351,28 +341,41 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
     });
   }
 
+  /**
+   * Semantic claim with atomic lease creation (G2 design spec §2). A live
+   * foreign lease makes the operation busy; an expired lease may be taken
+   * over with a monotonically higher fencing token.
+   */
   async #claim(
     record: OperationRecord,
     resumeFrom: "authorized" | "dispatched" | "uncertain",
   ): Promise<OperationRecord | undefined> {
+    const activeLease = await this.ledger.lease(record.operationId);
     if (
-      record.claim !== undefined &&
-      record.claim.owner !== this.#ownerId &&
-      Date.parse(record.claim.expiresAt) > this.#clock().getTime()
+      activeLease !== undefined &&
+      activeLease.owner !== this.#ownerId &&
+      Date.parse(activeLease.expiresAt) > this.#clock().getTime()
     ) {
       throw new OperationBusyError(record.operationId);
     }
     const fencingToken = record.lastFencingToken + 1;
-    return this.#update(record, {
-      state: "claimed",
-      resumeFrom,
-      lastFencingToken: fencingToken,
-      claim: {
+    const acquiredAt = this.#now();
+    const claimed = await this.ledger.claim(
+      record.operationId,
+      record.semanticRevision,
+      {
         owner: this.#ownerId,
-        expiresAt: new Date(this.#clock().getTime() + this.#leaseMs).toISOString(),
         fencingToken,
+        acquiredAt,
+        resumeFrom,
       },
-    });
+      {
+        owner: this.#ownerId,
+        fencingToken,
+        expiresAt: new Date(this.#clock().getTime() + this.#leaseMs).toISOString(),
+      },
+    );
+    return claimed ? await this.#reload(record.operationId) : undefined;
   }
 
   async #dispatchAndExecute<I extends JsonValue, O extends JsonValue>(
@@ -383,7 +386,7 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
   ): Promise<O> {
     const effectiveSignal = signal ?? new AbortController().signal;
     if (effectiveSignal.aborted) {
-      const state = claimed.resumeFrom === "authorized" ? "cancelled" : "uncertain";
+      const state = claimed.claim?.resumeFrom === "authorized" ? "cancelled" : "uncertain";
       const next = await this.#update(claimed, {
         state,
         claim: undefined,
@@ -399,7 +402,9 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
     const dispatched = await this.#update(claimed, {
       state: "dispatched",
       attempts: claimed.attempts + 1,
-      resumeFrom: undefined,
+      claim: claimed.claim === undefined
+        ? undefined
+        : { ...claimed.claim, resumeFrom: undefined },
       uncertainty: undefined,
     });
     if (dispatched === undefined) throw new OperationBusyError(claimed.operationId);
@@ -421,7 +426,7 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
     if (work.leaseLost) throw new OperationBusyError(dispatched.operationId);
 
     if (work.status === "fulfilled") {
-      const succeeded = await this.#update(work.record, {
+      const succeeded = await this.#update(dispatched, {
         state: "succeeded",
         claim: undefined,
         result: work.value.value,
@@ -436,7 +441,7 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
     const error = work.error;
     if (error instanceof SimulatedProcessCrash || error instanceof OperationBusyError) throw error;
 
-    const context = this.#context(work.record, effectiveSignal);
+    const context = this.#context(dispatched, effectiveSignal);
     if (
       effectiveSignal.aborted &&
       action.effect.kind === "reconcilable" &&
@@ -451,7 +456,7 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
     }
 
     if (!hasExternalSideEffect(action.effect)) {
-      const failed = await this.#update(work.record, {
+      const failed = await this.#update(dispatched, {
         state: effectiveSignal.aborted ? "cancelled" : "failed",
         claim: undefined,
         error: effectiveSignal.aborted ? undefined : this.#safeExecutionError(),
@@ -461,7 +466,7 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
       throw error;
     }
 
-    const uncertain = await this.#update(work.record, {
+    const uncertain = await this.#update(dispatched, {
       state: "uncertain",
       claim: undefined,
       error: undefined,
@@ -495,7 +500,6 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
         reconcile(input, this.#context(claimed, leaseSignal))
       );
       if (work.leaseLost) throw new OperationBusyError(claimed.operationId);
-      claimed = work.record;
       if (work.status === "rejected") {
         const uncertain = await this.#markUncertain(claimed, "reconcile-threw");
         if (uncertain === undefined) throw new OperationBusyError(claimed.operationId);
@@ -537,7 +541,6 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
         const reconciled = await this.#update(claimed, {
           state: "reconciled",
           claim: undefined,
-          resumeFrom: undefined,
           result: value,
           receipt: outcome.receipt,
           reconciliation: { outcome: "succeeded", at: this.#now() },
@@ -552,7 +555,6 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
         const reconciled = await this.#update(claimed, {
           state: "reconciled",
           claim: undefined,
-          resumeFrom: undefined,
           error: outcome.error,
           receipt: outcome.receipt,
           reconciliation: { outcome: "failed", at: this.#now() },
@@ -569,7 +571,6 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
       const uncertain = await this.#update(claimed, {
         state: "uncertain",
         claim: undefined,
-        resumeFrom: undefined,
         receipt: "receipt" in outcome ? outcome.receipt : claimed.receipt,
         uncertainty: { reason: `reconcile-${outcome.status}`, at: this.#now() },
       });
@@ -598,44 +599,42 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
     };
   }
 
+  /**
+   * Lease-aware execution wrapper (G2 design spec §2): heartbeat renews the
+   * lightweight LiveLease only - no semantic revision, history entry or
+   * ordering change - and a lost or failing renewal aborts the combined
+   * signal so the stale owner cannot write a terminal state.
+   */
   async #runWithLease<T>(
     record: OperationRecord,
     callerSignal: AbortSignal,
     work: (signal: AbortSignal) => Promise<T> | T,
   ): Promise<LeaseWorkResult<T>> {
-    let current = record;
     let stopped = false;
     let leaseLost = false;
     let renewal = Promise.resolve();
     const leaseAbort = new AbortController();
     const signal = AbortSignal.any([callerSignal, leaseAbort.signal]);
     const intervalMs = Math.max(1, Math.floor(this.#leaseMs / 3));
+    const claim = record.claim;
 
     const timer = setInterval(() => {
       renewal = renewal.then(async () => {
-        if (stopped || leaseLost) return;
-        const claim = current.claim;
-        if (claim === undefined || claim.owner !== this.#ownerId) {
-          leaseLost = true;
-          leaseAbort.abort(new Error("Ordarium operation claim was lost"));
-          return;
-        }
+        if (stopped || leaseLost || claim === undefined) return;
         try {
-          const renewed = await this.#update(current, {
-            claim: {
-              ...claim,
-              expiresAt: new Date(this.#clock().getTime() + this.#leaseMs).toISOString(),
-            },
-          });
-          if (renewed === undefined) {
+          const renewed = await this.ledger.renewLease(
+            record.operationId,
+            claim.owner,
+            claim.fencingToken,
+            new Date(this.#clock().getTime() + this.#leaseMs).toISOString(),
+          );
+          if (!renewed) {
             leaseLost = true;
-            leaseAbort.abort(new Error("Ordarium operation claim was superseded"));
-            return;
+            leaseAbort.abort(new Error("Ordarium operation lease was lost"));
           }
-          current = renewed;
-        } catch (error) {
+        } catch {
           leaseLost = true;
-          leaseAbort.abort(error);
+          leaseAbort.abort(new Error("Ordarium operation lease renewal failed"));
         }
       });
     }, intervalMs);
@@ -653,8 +652,8 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
     }
 
     return outcome.status === "fulfilled"
-      ? { status: "fulfilled", value: outcome.value, record: current, leaseLost }
-      : { status: "rejected", error: outcome.error, record: current, leaseLost };
+      ? { status: "fulfilled", value: outcome.value, leaseLost }
+      : { status: "rejected", error: outcome.error, leaseLost };
   }
 
   #readTerminal<I extends JsonValue, O extends JsonValue>(
@@ -802,7 +801,6 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
     return this.#update(record, {
       state: "uncertain",
       claim: undefined,
-      resumeFrom: undefined,
       uncertainty: { reason, at: this.#now() },
     });
   }
@@ -815,10 +813,10 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
       ...record,
       ...patch,
       operationId: record.operationId,
-      revision: record.revision + 1,
+      semanticRevision: record.semanticRevision + 1,
       updatedAt: this.#now(),
     };
-    const saved = await this.ledger.compareAndSet(record.operationId, record.revision, next);
+    const saved = await this.ledger.compareAndSet(record.operationId, record.semanticRevision, next);
     return saved ? next : undefined;
   }
 
@@ -844,6 +842,19 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
   #now(): string {
     return this.#clock().toISOString();
   }
+}
+
+function idempotencyDeadlineOf<I extends JsonValue, O extends JsonValue>(
+  action: Action<I, O>,
+  clock: () => Date,
+): string | undefined {
+  const window = action.effect.kind === "idempotent"
+    ? action.effect.window
+    : action.effect.kind === "reconcilable"
+      ? action.effect.idempotencyWindow
+      : undefined;
+  if (window?.kind !== "finite") return undefined;
+  return new Date(clock().getTime() + window.expiresAfterMs).toISOString();
 }
 
 export function operationIdentityPreview<I extends JsonValue, O extends JsonValue>(
@@ -873,7 +884,7 @@ export function describeOperation(record: OperationRecord): string {
   return canonicalJson({
     operationId: record.operationId,
     action: `${record.actionName}@${record.actionVersion}`,
-    guarantee: record.guarantee,
+    effect: record.effectKind,
     state: record.state,
     attempts: record.attempts,
   });
@@ -902,6 +913,12 @@ function assertProviderPrincipalRef(ref: ProviderPrincipalRef): void {
     }
   }
 }
+
+const AUTHORIZATION_EVIDENCE_KINDS = new Set<AuthorizationEvidenceKind>([
+  "host-admission",
+  "policy-decision",
+  "human-approval",
+]);
 
 function assertInvocationIdentity(identity: InvocationIdentity): void {
   for (const [name, value] of [
@@ -947,12 +964,6 @@ function assertInvocationIdentity(identity: InvocationIdentity): void {
     }
   }
 }
-
-const AUTHORIZATION_EVIDENCE_KINDS = new Set<AuthorizationEvidenceKind>([
-  "host-admission",
-  "policy-decision",
-  "human-approval",
-]);
 
 function assertAuthorizationDecision(decision: AuthorizationDecision): void {
   if (decision.decision !== "allow" && decision.decision !== "deny") {

@@ -132,3 +132,55 @@ export class SimulatedProcessCrash extends OrdariumError {
     super("SIMULATED_PROCESS_CRASH", "Simulated process crash", operationId);
   }
 }
+
+/**
+ * Stable infrastructure error family (G2 design spec §5). Callers decide on
+ * these codes; parsing raw SQLite messages is forbidden (G2-A07).
+ */
+export class LedgerOpenFailedError extends OrdariumError {
+  constructor(detail: string) {
+    super("LEDGER_OPEN_FAILED", `The durable ledger could not be opened: ${detail}`);
+  }
+}
+
+export class LedgerNewerSchemaError extends OrdariumError {
+  constructor(version: number) {
+    super(
+      "LEDGER_NEWER_SCHEMA",
+      `The ledger schema version ${version} is newer than this runtime supports`,
+    );
+  }
+}
+
+export class LedgerMigrationFailedError extends OrdariumError {
+  constructor(detail: string) {
+    super(
+      "LEDGER_MIGRATION_FAILED",
+      `The transactional ledger migration failed and was rolled back: ${detail}`,
+    );
+  }
+}
+
+export class LedgerBusyError extends OrdariumError {
+  constructor() {
+    super("LEDGER_BUSY", "The ledger is locked by another writer");
+  }
+}
+
+export class LedgerCorruptError extends OrdariumError {
+  constructor() {
+    super("LEDGER_CORRUPT", "The ledger content is corrupt; failing closed");
+  }
+}
+
+export class LedgerClosedError extends OrdariumError {
+  constructor() {
+    super("LEDGER_CLOSED", "The ledger is closed");
+  }
+}
+
+export class LedgerFullError extends OrdariumError {
+  constructor() {
+    super("LEDGER_FULL", "The storage backing the ledger is exhausted");
+  }
+}

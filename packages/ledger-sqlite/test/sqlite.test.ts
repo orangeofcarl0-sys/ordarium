@@ -68,9 +68,9 @@ describe("SqliteLedger", () => {
     const secondLedger = new SqliteLedger(path);
     const secondRuntime = new OrdariumRuntime({ ledger: secondLedger });
     await expect(action.run(secondRuntime, "value", { identity })).resolves.toBe("VALUE");
-    const [record] = await secondLedger.list();
+    const [record] = (await secondLedger.list()).records;
     expect(record?.state).toBe("succeeded");
-    expect(await secondLedger.history(record!.operationId)).toHaveLength(5);
+    expect((await secondLedger.history(record!.operationId)).events).toHaveLength(5);
     expect(calls).toBe(1);
     await secondRuntime.close();
   });
@@ -132,32 +132,36 @@ describe("SqliteLedger", () => {
 
     const ledger = new SqliteLedger(path);
     const corrupt = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       operationId: `op_${"9".repeat(40)}`,
       actionName: "sqlite.corrupt",
       actionVersion: "1",
       inputDigest: "a".repeat(64),
       logicalKeyDigest: "b".repeat(64),
       identity: { source: "test", scope: "sqlite", callId: "bad" },
-      guarantee: "guarded",
+      effectKind: "guarded",
+      idempotencyMode: "none",
       state: "succeeded",
-      revision: 1,
+      semanticRevision: 1,
       attempts: 1,
       lastFencingToken: 0,
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     };
     const raw = new DatabaseSync(path);
-    raw.prepare(`
-      INSERT INTO ordarium_operations(operation_id, revision, state, updated_at, record_json)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(corrupt.operationId, 1, "succeeded", corrupt.updatedAt, JSON.stringify(corrupt));
-    raw.close();
+    try {
+      raw.prepare(`
+        INSERT INTO ordarium_operations(operation_id, semantic_revision, state, updated_at, record_json)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(corrupt.operationId, 1, "succeeded", corrupt.updatedAt, JSON.stringify(corrupt));
+    } finally {
+      raw.close();
+    }
     ledger.close();
 
     const reopened = new SqliteLedger(path);
-    await expect(reopened.get(corrupt.operationId)).rejects.toThrow(/Corrupt/u);
-    await expect(reopened.list()).rejects.toThrow();
+    await expect(reopened.get(corrupt.operationId)).rejects.toMatchObject({ code: "LEDGER_CORRUPT" });
+    await expect(reopened.list()).rejects.toMatchObject({ code: "LEDGER_CORRUPT" });
     reopened.close();
   });
 });

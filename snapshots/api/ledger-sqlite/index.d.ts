@@ -1,7 +1,15 @@
-import type { OperationEvent, OperationLedger, OperationListFilter, OperationRecord } from "@ordarium/core";
+import { type ClaimRequest, type LiveLease, type OperationEventPage, type OperationLedger, type OperationListFilter, type OperationPage, type OperationRecord } from "@ordarium/core";
 export interface SqliteLedgerOptions {
     timeoutMs?: number | undefined;
+    clock?: (() => Date) | undefined;
 }
+/**
+ * Crash-durable SQLite reference ledger implementing the full v2 port
+ * contract (G2 design spec §2/§3): semantic CAS with fence verification,
+ * atomic claim+lease, lightweight lease renewal that never touches semantic
+ * state, opaque cursor pagination, a transactional v1->v2 forward migration
+ * and a stable infrastructure error family.
+ */
 export declare class SqliteLedger implements OperationLedger {
     #private;
     readonly capabilities: {
@@ -19,8 +27,15 @@ export declare class SqliteLedger implements OperationLedger {
         record: OperationRecord;
     }>;
     compareAndSet(operationId: string, expectedRevision: number, next: OperationRecord): Promise<boolean>;
-    history(operationId: string): Promise<OperationEvent[]>;
-    list(filter?: OperationListFilter): Promise<OperationRecord[]>;
+    claim(operationId: string, expectedRevision: number, request: ClaimRequest, lease: {
+        owner: string;
+        fencingToken: number;
+        expiresAt: string;
+    }): Promise<boolean>;
+    lease(operationId: string): Promise<LiveLease | undefined>;
+    renewLease(operationId: string, owner: string, fencingToken: number, expiresAt: string): Promise<boolean>;
+    history(operationId: string, cursor?: string, limit?: number): Promise<OperationEventPage>;
+    list(filter?: OperationListFilter, cursor?: string): Promise<OperationPage>;
     close(): void;
 }
 //# sourceMappingURL=index.d.ts.map

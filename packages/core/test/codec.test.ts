@@ -17,16 +17,17 @@ const text = defineSchema<string>({ type: "string" }, (value) => {
 
 function baseRecord(overrides: Partial<OperationRecord> = {}): OperationRecord {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     operationId: `op_${"0".repeat(40)}`,
     actionName: "codec.probe",
     actionVersion: "1",
     inputDigest: "a".repeat(64),
     logicalKeyDigest: "b".repeat(64),
     identity: { source: "test", scope: "codec", callId: "call-1" },
-    guarantee: "guarded",
+    effectKind: "guarded",
+    idempotencyMode: "none",
     state: "proposed",
-    revision: 0,
+    semanticRevision: 0,
     attempts: 0,
     lastFencingToken: 0,
     createdAt: "2026-01-01T00:00:00.000Z",
@@ -38,7 +39,7 @@ function baseRecord(overrides: Partial<OperationRecord> = {}): OperationRecord {
 function authorizedRecord(): OperationRecord {
   return baseRecord({
     state: "authorized",
-    revision: 1,
+    semanticRevision: 1,
     updatedAt: "2026-01-01T00:00:01.000Z",
     authorization: {
       decision: "allow",
@@ -49,7 +50,7 @@ function authorizedRecord(): OperationRecord {
   });
 }
 
-describe("OperationRecord codec (G1-A06)", () => {
+describe("OperationRecord codec (G1-A06, v2)", () => {
   it("round-trips a valid record", () => {
     const record = authorizedRecord();
     expect(decodeOperationRecord(structuredClone(record))).toEqual(record);
@@ -57,12 +58,15 @@ describe("OperationRecord codec (G1-A06)", () => {
 
   it("rejects nested field damage", () => {
     const cases: [string, unknown][] = [
-      ["bad schema version", { ...baseRecord(), schemaVersion: 2 }],
+      ["v1 schema version", { ...baseRecord(), schemaVersion: 1 }],
       ["unknown state", { ...baseRecord(), state: "finished" }],
-      ["unknown effect kind", { ...baseRecord(), guarantee: "trustworthy" }],
+      ["unknown effect kind", { ...baseRecord(), effectKind: "trustworthy" }],
+      ["unknown idempotency mode", { ...baseRecord(), idempotencyMode: "eventual" }],
       ["short digest", { ...baseRecord(), inputDigest: "a".repeat(63) }],
       ["non-hex digest", { ...baseRecord(), logicalKeyDigest: "z".repeat(64) }],
       ["bad principal digest", { ...baseRecord(), providerPrincipalDigest: "nope" }],
+      ["bad fingerprint", { ...baseRecord(), contractFingerprint: "nope" }],
+      ["bad idempotency deadline", { ...baseRecord(), idempotencyExpiresAt: "soon" }],
       ["empty identity source", {
         ...baseRecord(),
         identity: { source: "", scope: "codec", callId: "call-1" },
@@ -95,10 +99,14 @@ describe("OperationRecord codec (G1-A06)", () => {
         },
       }],
       ["bad safe error code", {
-        ...baseRecord({ state: "failed", revision: 3, error: { code: "nope", message: "x" } }),
+        ...baseRecord({ state: "failed", semanticRevision: 3, error: { code: "nope", message: "x" } }),
+      }],
+      ["claim without acquiredAt", {
+        ...baseRecord({ state: "claimed", semanticRevision: 2, lastFencingToken: 1 }),
+        claim: { owner: "runtime-x", fencingToken: 1 },
       }],
       ["bad timestamp", { ...baseRecord(), createdAt: "not-a-date" }],
-      ["negative revision", { ...baseRecord(), revision: -1 }],
+      ["negative revision", { ...baseRecord(), semanticRevision: -1 }],
       ["array record", [baseRecord()]],
       ["null record", null],
     ];
@@ -110,43 +118,47 @@ describe("OperationRecord codec (G1-A06)", () => {
   it("rejects cross-state invariant violations", () => {
     const at = "2026-01-01T00:00:02.000Z";
     const cases: [string, OperationRecord][] = [
-      ["revision 0 past proposed", baseRecord({ state: "authorized" })],
+      ["semantic revision 0 past proposed", baseRecord({ state: "authorized" })],
       ["proposed with authorization", baseRecord({
         authorization: { decision: "allow", kind: "host-admission", source: "s", at },
       })],
       ["authorized without allow", baseRecord({
         state: "authorized",
-        revision: 1,
+        semanticRevision: 1,
         authorization: { decision: "deny", kind: "policy-decision", source: "s", at },
       })],
       ["denied without deny", baseRecord({
         state: "denied",
-        revision: 1,
+        semanticRevision: 1,
         authorization: { decision: "allow", kind: "policy-decision", source: "s", at },
       })],
       ["claim in a terminal state", baseRecord({
         state: "succeeded",
-        revision: 2,
+        semanticRevision: 2,
         result: "ok",
-        claim: { owner: "runtime-x", expiresAt: at, fencingToken: 1 },
+        claim: { owner: "runtime-x", fencingToken: 1, acquiredAt: at },
         lastFencingToken: 1,
       })],
       ["claim fence behind lastFencingToken", baseRecord({
         state: "claimed",
-        revision: 2,
-        resumeFrom: "authorized",
-        claim: { owner: "runtime-x", expiresAt: at, fencingToken: 1 },
+        semanticRevision: 2,
+        claim: { owner: "runtime-x", fencingToken: 1, acquiredAt: at, resumeFrom: "authorized" },
         lastFencingToken: 7,
       })],
-      ["resumeFrom outside claimed", baseRecord({ state: "dispatched", revision: 2, resumeFrom: "authorized" })],
+      ["claim.resumeFrom outside claimed", baseRecord({
+        state: "dispatched",
+        semanticRevision: 2,
+        claim: { owner: "runtime-x", fencingToken: 1, acquiredAt: at, resumeFrom: "authorized" },
+        lastFencingToken: 1,
+      })],
       ["uncertainty outside its states", baseRecord({
         state: "authorized",
-        revision: 1,
+        semanticRevision: 1,
         uncertainty: { reason: "stale", at },
       })],
-      ["succeeded without result", baseRecord({ state: "succeeded", revision: 2 })],
-      ["failed without error", baseRecord({ state: "failed", revision: 2 })],
-      ["reconciled without outcome", baseRecord({ state: "reconciled", revision: 2 })],
+      ["succeeded without result", baseRecord({ state: "succeeded", semanticRevision: 2 })],
+      ["failed without error", baseRecord({ state: "failed", semanticRevision: 2 })],
+      ["reconciled without outcome", baseRecord({ state: "reconciled", semanticRevision: 2 })],
     ];
     for (const [label, corrupt] of cases) {
       expect(() => decodeOperationRecord(structuredClone(corrupt)), label).toThrow(/Corrupt/u);
@@ -156,10 +168,9 @@ describe("OperationRecord codec (G1-A06)", () => {
   it("keeps uncertainty valid while an uncertain operation is being recovered", () => {
     const record = baseRecord({
       state: "claimed",
-      revision: 3,
-      resumeFrom: "uncertain",
+      semanticRevision: 3,
       lastFencingToken: 2,
-      claim: { owner: "runtime-x", expiresAt: at2(), fencingToken: 2 },
+      claim: { owner: "runtime-x", fencingToken: 2, acquiredAt: at2(), resumeFrom: "uncertain" },
       uncertainty: { reason: "execution-threw-after-dispatch", at: at2() },
     });
     expect(() => decodeOperationRecord(record)).not.toThrow();
@@ -169,10 +180,10 @@ describe("OperationRecord codec (G1-A06)", () => {
     const ledger = new MemoryLedger();
     const valid = authorizedRecord();
     await ledger.create(valid);
-    const stored = (await ledger.list())[0] as OperationRecord;
+    const stored = (await ledger.list()).records[0] as OperationRecord;
 
-    const corrupt = { ...stored, revision: stored.revision + 1, state: "succeeded" } as OperationRecord;
-    await expect(ledger.compareAndSet(stored.operationId, stored.revision, corrupt))
+    const corrupt = { ...stored, semanticRevision: stored.semanticRevision + 1, state: "succeeded" } as OperationRecord;
+    await expect(ledger.compareAndSet(stored.operationId, stored.semanticRevision, corrupt))
       .rejects.toThrow(/Corrupt/u);
     await expect(
       ledger.create({ ...baseRecord({ state: "denied" }), operationId: `op_${"1".repeat(40)}` } as OperationRecord),
@@ -216,7 +227,7 @@ describe("resource envelope (G1-A07)", () => {
       }),
     ).rejects.toMatchObject({ code: "INPUT_TOO_LARGE" });
 
-    expect(await runtime.ledger.list()).toHaveLength(0);
+    expect((await runtime.ledger.list()).records).toHaveLength(0);
     expect(executions).toBe(0);
   });
 
@@ -245,6 +256,6 @@ describe("resource envelope (G1-A07)", () => {
       }),
     ).rejects.toThrow(/lineage/u);
 
-    expect(await runtime.ledger.list()).toHaveLength(0);
+    expect((await runtime.ledger.list()).records).toHaveLength(0);
   });
 });

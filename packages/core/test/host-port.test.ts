@@ -37,7 +37,7 @@ describe("HostInvocationPort", () => {
     await expect(action.run(runtime, "work")).rejects.toBeInstanceOf(IdentityRequiredError);
     await expect(action.run(runtime, "work")).rejects.toMatchObject({ code: "IDENTITY_REQUIRED" });
     expect(executions).toBe(0);
-    expect(await ledger.list()).toHaveLength(0);
+    expect((await ledger.list()).records).toHaveLength(0);
   });
 
   it("still allows random direct identity for read-only and explicit unmanaged actions", async () => {
@@ -89,6 +89,6 @@ describe("HostInvocationPort", () => {
     await expect(port.invoke(action, "work", invocation)).resolves.toBe("done:work");
     await expect(port.invoke(action, "work", invocation)).resolves.toBe("done:work");
     expect(executions).toBe(1);
-    expect(await runtime.ledger.list()).toHaveLength(1);
+    expect((await runtime.ledger.list()).records).toHaveLength(1);
   });
 });

@@ -14,5 +14,8 @@
   },
   "dependencies": {
     "@ordarium/core": "workspace:*"
+  },
+  "engines": {
+    "node": ">=24.0.0"
   }
 }

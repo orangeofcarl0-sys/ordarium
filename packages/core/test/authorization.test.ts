@@ -59,7 +59,7 @@ describe("classified authorization evidence", () => {
     await expect(action.run(runtime, "work", { identity, authorization: deny }))
       .rejects.toMatchObject({ code: "AUTHORIZATION_CONFLICT" });
 
-    const [record] = await runtime.ledger.list();
+    const [record] = (await runtime.ledger.list()).records;
     expect(record?.state).toBe("succeeded");
     expect(record?.authorization).toMatchObject({ decision: "allow", kind: "policy-decision" });
     expect(executions.count).toBe(1);
@@ -75,7 +75,7 @@ describe("classified authorization evidence", () => {
     await expect(action.run(runtime, "work", { identity, authorization: allow }))
       .rejects.toMatchObject({ code: "AUTHORIZATION_CONFLICT" });
 
-    const [record] = await runtime.ledger.list();
+    const [record] = (await runtime.ledger.list()).records;
     expect(record?.state).toBe("denied");
     expect(record?.authorization?.decision).toBe("deny");
     expect(executions.count).toBe(0);
@@ -109,7 +109,7 @@ describe("classified authorization evidence", () => {
       }),
     ).rejects.toThrow(/host-admission, policy-decision or human-approval/);
 
-    const [record] = await runtime.ledger.list();
+    const [record] = (await runtime.ledger.list()).records;
     expect(record?.state).toBe("proposed");
     expect(record?.authorization).toBeUndefined();
     expect(executions.count).toBe(0);
@@ -127,7 +127,7 @@ describe("classified authorization evidence", () => {
       }),
     ).resolves.toBe("done:work");
 
-    const [record] = await runtime.ledger.list();
+    const [record] = (await runtime.ledger.list()).records;
     expect(record?.authorization).toMatchObject({ kind: "human-approval", source: "test:approval" });
   });
 
@@ -144,7 +144,7 @@ describe("classified authorization evidence", () => {
     const runtime = new OrdariumRuntime({ ledger: new MemoryLedger(), allowVolatileLedger: true });
 
     await expect(action.run(runtime, "work", { identity })).resolves.toBe("work");
-    const [record] = await runtime.ledger.list();
+    const [record] = (await runtime.ledger.list()).records;
     expect(record?.authorization).toMatchObject({
       decision: "allow",
       kind: "host-admission",

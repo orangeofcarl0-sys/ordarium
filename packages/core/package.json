@@ -11,5 +11,8 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
     }
+  },
+  "engines": {
+    "node": ">=24.0.0"
   }
 }

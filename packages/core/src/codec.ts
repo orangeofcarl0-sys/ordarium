@@ -8,10 +8,11 @@ import type {
 
 /**
  * The single complete OperationRecord codec owned by @ordarium/core
- * (docs/17 §9.2.5). TypeScript shape, runtime decode, length limits and
- * cross-state invariants have exactly one source: this module. Ledger
- * implementations (memory, SQLite, custom) must decode through it and never
- * grow their own validators.
+ * (docs/17 §9.2.5, G2 design spec §1). TypeScript shape, runtime decode,
+ * length limits and cross-state invariants have exactly one source: this
+ * module. Ledger implementations (memory, SQLite, custom) must decode
+ * through it and never grow their own validators. Only schemaVersion 2 is
+ * accepted; v1 shapes exist solely at the SQLite migration boundary.
  */
 export const RESOURCE_LIMITS = Object.freeze({
   maxOperationIdLength: 64,
@@ -47,6 +48,8 @@ const EFFECT_KINDS = new Set<EffectProfile["kind"]>([
   "reconcilable",
   "unmanaged",
 ]);
+
+const IDEMPOTENCY_MODES = new Set<OperationRecord["idempotencyMode"]>(["none", "operation-key"]);
 
 const EVIDENCE_KINDS = new Set<AuthorizationEvidenceKind>([
   "host-admission",
@@ -93,11 +96,30 @@ function timestampField(container: Record<string, unknown>, key: string): string
   return value;
 }
 
+function optionalTimestampField(
+  container: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  return container[key] === undefined ? undefined : timestampField(container, key);
+}
+
 function optionalJsonValue(container: Record<string, unknown>, key: string): JsonValue | undefined {
   const value = container[key];
   if (value === undefined) return undefined;
   assertJsonValue(value, `Operation record ${key}`);
   return value as JsonValue;
+}
+
+function optionalDigestField(
+  container: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = container[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !HEX_64.test(value)) {
+    throw new TypeError(`Operation record ${key} must be a lowercase 64-hex digest`);
+  }
+  return value;
 }
 
 function decodeIdentity(value: unknown): OperationRecord["identity"] {
@@ -154,19 +176,38 @@ function decodeAuthorization(value: unknown): NonNullable<OperationRecord["autho
   };
 }
 
-function decodeClaim(value: Record<string, unknown>): NonNullable<OperationRecord["claim"]> {
-  const fencingToken = value.fencingToken;
-  if (!Number.isSafeInteger(fencingToken) || (fencingToken as number) < 1) {
+function decodeSafeError(value: unknown): NonNullable<OperationRecord["error"]> {
+  if (!isObject(value)) {
+    throw new TypeError("Operation record error must be an object");
+  }
+  const code = stringField(value, "code", RESOURCE_LIMITS.maxSafeErrorCodeLength);
+  if (!SAFE_ERROR_CODE.test(code)) {
+    throw new TypeError("Operation record error code must be an uppercase identifier");
+  }
+  const message = stringField(value, "message", RESOURCE_LIMITS.maxSafeErrorMessageLength);
+  return { code, message };
+}
+
+function decodeClaim(value: unknown): NonNullable<OperationRecord["claim"]> {
+  if (!isObject(value)) {
+    throw new TypeError("Operation record claim must be an object");
+  }
+  const fencingToken = integerField(value, "fencingToken");
+  if (fencingToken < 1) {
     throw new TypeError("Operation record claim fencingToken must be a positive safe integer");
   }
-  const expiresAt = String(value.expiresAt);
-  if (!Number.isFinite(Date.parse(expiresAt))) {
-    throw new TypeError("Operation record claim expiresAt must be a parseable timestamp");
+  const resumeFrom = value.resumeFrom;
+  if (
+    resumeFrom !== undefined &&
+    !["authorized", "dispatched", "uncertain"].includes(String(resumeFrom))
+  ) {
+    throw new TypeError("Operation record claim resumeFrom must be authorized, dispatched or uncertain");
   }
   return {
     owner: stringField(value, "owner", RESOURCE_LIMITS.maxIdentityFieldLength),
-    expiresAt,
-    fencingToken: fencingToken as number,
+    fencingToken,
+    acquiredAt: timestampField(value, "acquiredAt"),
+    ...(resumeFrom === undefined ? {} : { resumeFrom: resumeFrom as "authorized" | "dispatched" | "uncertain" }),
   };
 }
 
@@ -187,18 +228,6 @@ function decodeReconciliation(
   return { outcome, at: timestampField(value, "at") };
 }
 
-function decodeSafeError(value: unknown): NonNullable<OperationRecord["error"]> {
-  if (!isObject(value)) {
-    throw new TypeError("Operation record error must be an object");
-  }
-  const code = stringField(value, "code", RESOURCE_LIMITS.maxSafeErrorCodeLength);
-  if (!SAFE_ERROR_CODE.test(code)) {
-    throw new TypeError("Operation record error code must be an uppercase identifier");
-  }
-  const message = stringField(value, "message", RESOURCE_LIMITS.maxSafeErrorMessageLength);
-  return { code, message };
-}
-
 /**
  * Decode and fully validate an OperationRecord. Any nested field damage,
  * oversized metadata or violated cross-state invariant throws a TypeError,
@@ -209,7 +238,7 @@ export function decodeOperationRecord(value: unknown): OperationRecord {
   if (!isObject(value)) {
     throw new TypeError("Operation record must be an object");
   }
-  if (value.schemaVersion !== 1) {
+  if (value.schemaVersion !== 2) {
     throw new TypeError("Unsupported Ordarium operation record schema");
   }
 
@@ -217,9 +246,16 @@ export function decodeOperationRecord(value: unknown): OperationRecord {
   if (typeof state !== "string" || !OPERATION_STATES.has(state as OperationState)) {
     throw new TypeError("Invalid Ordarium operation state");
   }
-  const guarantee = value.guarantee;
-  if (typeof guarantee !== "string" || !EFFECT_KINDS.has(guarantee as EffectProfile["kind"])) {
+  const effectKind = value.effectKind;
+  if (typeof effectKind !== "string" || !EFFECT_KINDS.has(effectKind as EffectProfile["kind"])) {
     throw new TypeError("Invalid Ordarium effect kind");
+  }
+  const idempotencyMode = value.idempotencyMode;
+  if (
+    typeof idempotencyMode !== "string" ||
+    !IDEMPOTENCY_MODES.has(idempotencyMode as OperationRecord["idempotencyMode"])
+  ) {
+    throw new TypeError("Invalid Ordarium idempotency mode");
   }
   for (const key of ["inputDigest", "logicalKeyDigest"] as const) {
     const digest = value[key];
@@ -227,26 +263,8 @@ export function decodeOperationRecord(value: unknown): OperationRecord {
       throw new TypeError(`Operation record ${key} must be a lowercase 64-hex digest`);
     }
   }
-  if (value.providerPrincipalDigest !== undefined &&
-    (typeof value.providerPrincipalDigest !== "string" || !HEX_64.test(value.providerPrincipalDigest))) {
-    throw new TypeError("Operation record providerPrincipalDigest must be a lowercase 64-hex digest");
-  }
-  if (value.contractFingerprint !== undefined &&
-    (typeof value.contractFingerprint !== "string" || !HEX_64.test(value.contractFingerprint))) {
-    throw new TypeError("Operation record contractFingerprint must be a lowercase 64-hex digest");
-  }
 
-  const claim = value.claim;
-  if (claim !== undefined) {
-    if (!isObject(claim)) {
-      throw new TypeError("Operation record claim must be an object");
-    }
-    decodeClaim(claim);
-  }
-  if (value.resumeFrom !== undefined &&
-    !["authorized", "dispatched", "uncertain"].includes(String(value.resumeFrom))) {
-    throw new TypeError("Operation record resumeFrom must be authorized, dispatched or uncertain");
-  }
+  const claim = value.claim === undefined ? undefined : decodeClaim(value.claim);
   const uncertainty = value.uncertainty;
   if (uncertainty !== undefined) {
     if (!isObject(uncertainty)) {
@@ -263,34 +281,31 @@ export function decodeOperationRecord(value: unknown): OperationRecord {
   }
 
   const record: OperationRecord = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     operationId: stringField(value, "operationId", RESOURCE_LIMITS.maxOperationIdLength),
     actionName: stringField(value, "actionName", RESOURCE_LIMITS.maxActionNameLength),
     actionVersion: stringField(value, "actionVersion", RESOURCE_LIMITS.maxActionVersionLength),
+    contractFingerprint: optionalDigestField(value, "contractFingerprint"),
     inputDigest: value.inputDigest as string,
     logicalKeyDigest: value.logicalKeyDigest as string,
+    providerPrincipalDigest: optionalDigestField(value, "providerPrincipalDigest"),
     identity: decodeIdentity(value.identity),
-    guarantee: guarantee as EffectProfile["kind"],
+    effectKind: effectKind as EffectProfile["kind"],
+    idempotencyMode: idempotencyMode as OperationRecord["idempotencyMode"],
+    idempotencyExpiresAt: optionalTimestampField(value, "idempotencyExpiresAt"),
     state: state as OperationState,
-    revision: integerField(value, "revision"),
+    semanticRevision: integerField(value, "semanticRevision"),
     attempts: integerField(value, "attempts"),
     lastFencingToken: integerField(value, "lastFencingToken"),
-    createdAt: timestampField(value, "createdAt"),
-    updatedAt: timestampField(value, "updatedAt"),
     authorization: value.authorization === undefined ? undefined : decodeAuthorization(value.authorization),
-    ...(value.providerPrincipalDigest === undefined
-      ? {}
-      : { providerPrincipalDigest: value.providerPrincipalDigest as string }),
-    ...(value.contractFingerprint === undefined
-      ? {}
-      : { contractFingerprint: value.contractFingerprint as string }),
-    ...(claim === undefined ? {} : { claim: decodeClaim(claim) }),
-    ...(value.resumeFrom === undefined ? {} : { resumeFrom: value.resumeFrom as OperationRecord["resumeFrom"] }),
+    ...(claim === undefined ? {} : { claim }),
     result: optionalJsonValue(value, "result"),
     receipt: optionalJsonValue(value, "receipt"),
     error: value.error === undefined ? undefined : decodeSafeError(value.error),
     ...(uncertainty === undefined ? {} : { uncertainty: decodeUncertainty(uncertainty) }),
     ...(reconciliation === undefined ? {} : { reconciliation: decodeReconciliation(reconciliation) }),
+    createdAt: timestampField(value, "createdAt"),
+    updatedAt: timestampField(value, "updatedAt"),
   };
 
   assertCrossStateInvariants(record);
@@ -307,8 +322,8 @@ function assertCrossStateInvariants(record: OperationRecord): void {
   const violation = (message: string): TypeError =>
     new TypeError(`Corrupt Ordarium operation record: ${message}`);
 
-  if (record.revision === 0 && state !== "proposed") {
-    throw violation("revision 0 must still be proposed");
+  if (record.semanticRevision === 0 && state !== "proposed") {
+    throw violation("semantic revision 0 must still be proposed");
   }
   if (record.authorization !== undefined && state === "proposed") {
     throw violation("a proposed record cannot already hold authorization");
@@ -320,18 +335,18 @@ function assertCrossStateInvariants(record: OperationRecord): void {
     throw violation("a denied record must hold a deny decision");
   }
   if (record.claim !== undefined && state !== "claimed" && state !== "dispatched") {
-    throw violation("a live claim is only valid in the claimed or dispatched states");
+    throw violation("a semantic claim is only valid in the claimed or dispatched states");
   }
   if (record.claim !== undefined && record.claim.fencingToken !== record.lastFencingToken) {
-    throw violation("the live claim must carry the latest fencing token");
+    throw violation("the semantic claim must carry the latest fencing token");
   }
-  if (record.resumeFrom !== undefined && state !== "claimed") {
-    throw violation("resumeFrom is only valid while claimed");
+  if (record.claim?.resumeFrom !== undefined && state !== "claimed") {
+    throw violation("claim.resumeFrom is only valid while claimed");
   }
   if (
     record.uncertainty !== undefined &&
-    record.state !== "uncertain" &&
-    !(record.state === "claimed" && record.resumeFrom === "uncertain")
+    state !== "uncertain" &&
+    !(state === "claimed" && record.claim?.resumeFrom === "uncertain")
   ) {
     throw violation("an uncertainty record is only valid while uncertain or recovering it");
   }

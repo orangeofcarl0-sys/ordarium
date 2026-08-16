@@ -93,14 +93,14 @@ describe("OrdariumRuntime", () => {
     await expect(action.run(runtime, { value: "a" }, { identity })).resolves.toEqual({ accepted: "a" });
 
     expect(calls).toBe(1);
-    const records = await ledger.list();
+    const records = (await ledger.list()).records;
     expect(records).toHaveLength(1);
-    await expect(ledger.history(records[0]!.operationId)).resolves.toMatchObject([
-      { revision: 0, state: "proposed" },
-      { revision: 1, state: "authorized" },
-      { revision: 2, state: "claimed" },
-      { revision: 3, state: "dispatched" },
-      { revision: 4, state: "succeeded" },
+    await expect((await ledger.history(records[0]!.operationId)).events).toMatchObject([
+      { semanticRevision: 0, state: "proposed" },
+      { semanticRevision: 1, state: "authorized" },
+      { semanticRevision: 2, state: "claimed" },
+      { semanticRevision: 3, state: "dispatched" },
+      { semanticRevision: 4, state: "succeeded" },
     ]);
   });
 
@@ -152,8 +152,13 @@ describe("OrdariumRuntime", () => {
       .rejects.toBeInstanceOf(OperationBusyError);
     await expect(first).resolves.toEqual({ accepted: "held" });
     expect(calls).toBe(1);
-    const [record] = await ledger.list();
-    expect(record!.revision).toBeGreaterThan(4);
+    const [record] = (await ledger.list()).records;
+    // v2 lease separation (G2-A03): heartbeats renew the LiveLease only -
+    // semantic state stays at the dispatch revision, history stops growing,
+    // and the completed operation leaves no lease behind.
+    expect(record!.semanticRevision).toBe(4);
+    expect((await ledger.history(record!.operationId)).events).toHaveLength(5);
+    expect(await ledger.lease(record!.operationId)).toBeUndefined();
   });
 
   it("fails closed when a managed side effect has no authorization source", async () => {
@@ -185,7 +190,7 @@ describe("OrdariumRuntime", () => {
 
     await expect(action.run(runtime, { value: "x" }, { identity }))
       .rejects.toBeInstanceOf(PersistedValueTooLargeError);
-    const [record] = await runtime.ledger.list();
+    const [record] = (await runtime.ledger.list()).records;
     expect(record?.state).toBe("failed");
     expect(record?.result).toBeUndefined();
   });
@@ -286,7 +291,7 @@ describe("OrdariumRuntime", () => {
     await expect(action.run(runtime, { value: "done" }, options))
       .resolves.toEqual({ accepted: "done" });
     expect(executeCalls).toBe(1);
-    const [record] = await runtime.ledger.list();
+    const [record] = (await runtime.ledger.list()).records;
     expect(record).toMatchObject({
       state: "reconciled",
       reconciliation: { outcome: "succeeded" },

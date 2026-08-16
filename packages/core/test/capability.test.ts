@@ -66,11 +66,25 @@ class LedgerWithCapabilities implements OperationLedger {
   compareAndSet(operationId: string, expectedRevision: number, next: OperationRecord) {
     return this.#inner.compareAndSet(operationId, expectedRevision, next);
   }
-  history(operationId: string) {
-    return this.#inner.history(operationId);
+  claim(
+    operationId: string,
+    expectedRevision: number,
+    request: Parameters<OperationLedger["claim"]>[2],
+    lease: Parameters<OperationLedger["claim"]>[3],
+  ) {
+    return this.#inner.claim(operationId, expectedRevision, request, lease);
   }
-  list(filter?: Parameters<OperationLedger["list"]>[0]) {
-    return this.#inner.list(filter);
+  lease(operationId: string) {
+    return this.#inner.lease(operationId);
+  }
+  renewLease(operationId: string, owner: string, fencingToken: number, expiresAt: string) {
+    return this.#inner.renewLease(operationId, owner, fencingToken, expiresAt);
+  }
+  history(operationId: string, cursor?: string, limit?: number) {
+    return this.#inner.history(operationId, cursor, limit);
+  }
+  list(filter?: Parameters<OperationLedger["list"]>[0], cursor?: string) {
+    return this.#inner.list(filter, cursor);
   }
 }
 
@@ -96,7 +110,7 @@ describe("ledger capability gate (G1-A10)", () => {
       action.run(runtime, "work", { identity, authorization: allow }),
     ).rejects.toMatchObject({ code: "LEDGER_CAPABILITY_REQUIRED" });
 
-    expect(await ledger.list()).toHaveLength(0);
+    expect((await ledger.list()).records).toHaveLength(0);
     expect(executions.count).toBe(0);
   });
 
@@ -140,7 +154,7 @@ describe("ledger capability gate (G1-A10)", () => {
 
     await expect(action.run(runtime, "work", { identity, authorization: allow }))
       .rejects.toMatchObject({ code: "LEDGER_CAPABILITY_REQUIRED" });
-    expect(await narrowLedger.list()).toHaveLength(0);
+    expect((await narrowLedger.list()).records).toHaveLength(0);
     expect(executions.count).toBe(0);
 
     const coveredRuntime = new OrdariumRuntime({ ledger: narrowLedger });

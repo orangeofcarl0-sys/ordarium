@@ -40,7 +40,7 @@ describe("HostAdapterHarness", () => {
     ).resolves.toBe("done:work");
 
     expect(executions.count).toBe(1);
-    expect(await runtime.ledger.list()).toHaveLength(1);
+    expect((await runtime.ledger.list()).records).toHaveLength(1);
   });
 
   it("keeps sibling calls from the same root as separate operations", async () => {
@@ -53,7 +53,7 @@ describe("HostAdapterHarness", () => {
     await harness.invoke(action, "b", { callId: "B1", rootCallId: "R", authorization: allow });
 
     expect(executions.count).toBe(2);
-    expect(await runtime.ledger.list()).toHaveLength(2);
+    expect((await runtime.ledger.list()).records).toHaveLength(2);
   });
 
   it("carries lineage and actor through the invocation for audit without affecting identity", async () => {
@@ -69,7 +69,7 @@ describe("HostAdapterHarness", () => {
       lineage: ["root", "subagent-1"],
       authorization: allow,
     });
-    const [record] = await runtime.ledger.list();
+    const [record] = (await runtime.ledger.list()).records;
 
     expect(record?.identity).toMatchObject({
       source: "harness",

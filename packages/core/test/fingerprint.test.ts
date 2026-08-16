@@ -112,7 +112,7 @@ describe("action contract fingerprint (G1-A04)", () => {
     await expect(drifted.run(runtime, "work", { identity, authorization: allow }))
       .rejects.toMatchObject({ code: "CONTRACT_DRIFT" });
 
-    const [record] = await runtime.ledger.list();
+    const [record] = (await runtime.ledger.list()).records;
     expect(record?.state).toBe("succeeded");
     expect(record?.contractFingerprint).toBe(contractFingerprint(original));
     expect(executions).toBe(1);
@@ -143,7 +143,7 @@ describe("action contract fingerprint (G1-A04)", () => {
     await expect(make().run(runtime, "work", { identity, authorization: allow }))
       .resolves.toBe("work");
     expect(executions).toBe(1);
-    const [record] = await runtime.ledger.list();
+    const [record] = (await runtime.ledger.list()).records;
     expect(record?.contractFingerprint).toMatch(/^[0-9a-f]{64}$/u);
   });
 });

@@ -31,8 +31,9 @@ export interface AuthorizationRecord extends AuthorizationDecision {
 }
 export interface OperationClaim {
     owner: string;
-    expiresAt: string;
     fencingToken: number;
+    acquiredAt: string;
+    resumeFrom?: "authorized" | "dispatched" | "uncertain" | undefined;
 }
 export interface SafeError {
     code: string;
@@ -46,43 +47,70 @@ export interface ReconciliationRecord {
     outcome: "failed" | "succeeded";
     at: string;
 }
+/**
+ * Semantic operation record (G2 design spec §1). `updatedAt` only moves with
+ * semantic changes; heartbeat liveness lives exclusively in the LiveLease.
+ */
 export interface OperationRecord {
-    schemaVersion: 1;
+    schemaVersion: 2;
     operationId: string;
     actionName: string;
     actionVersion: string;
+    contractFingerprint?: string | undefined;
     inputDigest: string;
     logicalKeyDigest: string;
+    providerPrincipalDigest?: string | undefined;
     identity: InvocationIdentity;
-    guarantee: GuaranteeLevel;
+    effectKind: GuaranteeLevel;
+    idempotencyMode: "none" | "operation-key";
+    idempotencyExpiresAt?: string | undefined;
     state: OperationState;
-    revision: number;
+    semanticRevision: number;
     attempts: number;
     lastFencingToken: number;
-    createdAt: string;
-    updatedAt: string;
     authorization?: AuthorizationRecord | undefined;
-    providerPrincipalDigest?: string | undefined;
-    contractFingerprint?: string | undefined;
     claim?: OperationClaim | undefined;
-    resumeFrom?: "authorized" | "dispatched" | "uncertain" | undefined;
     result?: JsonValue | undefined;
     receipt?: JsonValue | undefined;
     error?: SafeError | undefined;
     uncertainty?: UncertaintyRecord | undefined;
     reconciliation?: ReconciliationRecord | undefined;
+    createdAt: string;
+    updatedAt: string;
 }
 export interface OperationEvent {
     operationId: string;
-    revision: number;
+    semanticRevision: number;
     state: OperationState;
     at: string;
     record: OperationRecord;
+}
+/** Current operational liveness for one operation; never part of business history. */
+export interface LiveLease {
+    operationId: string;
+    owner: string;
+    fencingToken: number;
+    expiresAt: string;
+    leaseRevision: number;
+}
+export interface ClaimRequest {
+    owner: string;
+    fencingToken: number;
+    acquiredAt: string;
+    resumeFrom: "authorized" | "dispatched" | "uncertain";
 }
 export interface OperationListFilter {
     actionName?: string | undefined;
     state?: OperationState | undefined;
     limit?: number | undefined;
+}
+export interface OperationPage {
+    records: OperationRecord[];
+    nextCursor?: string | undefined;
+}
+export interface OperationEventPage {
+    events: OperationEvent[];
+    nextCursor?: string | undefined;
 }
 export type LedgerCoordination = "single-isolate" | "single-process-exclusive" | "local-multi-process";
 /**
@@ -106,8 +134,17 @@ export interface OperationLedger {
         record: OperationRecord;
     }>;
     compareAndSet(operationId: string, expectedRevision: number, next: OperationRecord): Promise<boolean>;
-    history(operationId: string): Promise<OperationEvent[]>;
-    list(filter?: OperationListFilter): Promise<OperationRecord[]>;
+    /** Semantic claim plus lease creation in one transaction; false when busy. */
+    claim(operationId: string, expectedRevision: number, request: ClaimRequest, lease: {
+        owner: string;
+        fencingToken: number;
+        expiresAt: string;
+    }): Promise<boolean>;
+    lease(operationId: string): Promise<LiveLease | undefined>;
+    /** Lightweight liveness renewal - must not touch semantic state or history. */
+    renewLease(operationId: string, owner: string, fencingToken: number, expiresAt: string): Promise<boolean>;
+    history(operationId: string, cursor?: string, limit?: number): Promise<OperationEventPage>;
+    list(filter?: OperationListFilter, cursor?: string): Promise<OperationPage>;
     close?(): Promise<void> | void;
 }
 //# sourceMappingURL=types.d.ts.map

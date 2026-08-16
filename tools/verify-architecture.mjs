@@ -298,18 +298,21 @@ compareJsonSnapshot("contracts.json", contracts);
 
 const ledgerEntry = join(discovered["@ordarium/ledger-sqlite"], "dist", "src", "index.js");
 const { SqliteLedger } = await import(pathToFileURL(ledgerEntry).href);
+const coreEntry = join(discovered["@ordarium/core"], "dist", "src", "index.js");
+const { decodeOperationRecord } = await import(pathToFileURL(coreEntry).href);
 
 const created = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   operationId: `op_${"0123456789abcdef".repeat(3).slice(0, 40)}`,
   actionName: "fixture.baseline",
   actionVersion: "1",
   inputDigest: "a".repeat(64),
   logicalKeyDigest: "b".repeat(64),
   identity: { source: "dsh", scope: "fixture", callId: "call-fixture", rootCallId: "call-root" },
-  guarantee: "idempotent",
+  effectKind: "idempotent",
+  idempotencyMode: "operation-key",
   state: "proposed",
-  revision: 0,
+  semanticRevision: 0,
   attempts: 0,
   lastFencingToken: 0,
   createdAt: "2026-01-01T00:00:00.000Z",
@@ -318,7 +321,7 @@ const created = {
 const authorized = {
   ...created,
   state: "authorized",
-  revision: 1,
+  semanticRevision: 1,
   authorization: { decision: "allow", kind: "host-admission", source: "fixture:admission", at: "2026-01-01T00:00:01.000Z" },
   providerPrincipalDigest: "c".repeat(64),
   contractFingerprint: "d".repeat(64),
@@ -339,18 +342,19 @@ try {
 
   const reopened = new SqliteLedger(databasePath);
   const stored = await reopened.get(created.operationId);
-  if (JSON.stringify(stored) !== JSON.stringify(authorized)) {
+  const expected = decodeOperationRecord(structuredClone(authorized));
+  if (JSON.stringify(stored) !== JSON.stringify(expected)) {
     fail("ledger baseline: reopened record does not round-trip the authorized fixture");
   }
-  const events = await reopened.history(created.operationId);
-  if (events.length !== 2 || events[0].revision !== 0 || events[1].revision !== 1) {
+  const events = (await reopened.history(created.operationId)).events;
+  if (events.length !== 2 || events[0].semanticRevision !== 0 || events[1].semanticRevision !== 1) {
     fail("ledger baseline: reopened history does not contain both revisions");
   }
   reopened.close();
 
   const raw = new DatabaseSync(databasePath);
   const baseline = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     pragmas: {
       application_id: readPragma(raw, "application_id"),
       user_version: readPragma(raw, "user_version"),
@@ -363,12 +367,17 @@ try {
       .all(),
     operations: raw
       .prepare(
-        "SELECT operation_id, revision, state, updated_at, record_json FROM ordarium_operations ORDER BY operation_id",
+        "SELECT operation_id, semantic_revision, state, updated_at, record_json FROM ordarium_operations ORDER BY operation_id",
+      )
+      .all(),
+    leases: raw
+      .prepare(
+        "SELECT operation_id, owner, fencing_token, expires_at, lease_revision FROM ordarium_operation_leases ORDER BY operation_id",
       )
       .all(),
     events: raw
       .prepare(
-        "SELECT operation_id, revision, state, at, record_json FROM ordarium_operation_events ORDER BY operation_id, revision",
+        "SELECT operation_id, semantic_revision, state, at, record_json FROM ordarium_operation_events ORDER BY operation_id, semantic_revision",
       )
       .all(),
   };
@@ -376,10 +385,10 @@ try {
   if (baseline.pragmas.application_id !== 0x4f524441) {
     fail(`ledger baseline: application_id is not ORDA (${baseline.pragmas.application_id})`);
   }
-  if (baseline.pragmas.user_version !== 1) {
-    fail(`ledger baseline: user_version is not 1 (${baseline.pragmas.user_version})`);
+  if (baseline.pragmas.user_version !== 2) {
+    fail(`ledger baseline: user_version is not 2 (${baseline.pragmas.user_version})`);
   }
-  compareJsonSnapshot("sqlite-v1.json", baseline);
+  compareJsonSnapshot("sqlite-v2.json", baseline);
 } finally {
   rmSync(workdir, { recursive: true, force: true });
 }

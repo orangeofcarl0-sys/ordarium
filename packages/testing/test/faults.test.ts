@@ -26,7 +26,7 @@ describe("testing helpers", () => {
 
     await expect(action.run(runtime, "value", { identity: fixedIdentity() }))
       .rejects.toMatchObject({ code: "SIMULATED_PROCESS_CRASH" });
-    const [record] = await runtime.ledger.list();
+    const [record] = (await runtime.ledger.list()).records;
     expect(record?.state).toBe("dispatched");
   });
 });

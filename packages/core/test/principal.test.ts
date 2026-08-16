@@ -46,7 +46,7 @@ describe("provider principal continuity (G1-A11)", () => {
     await expect(action.run(runtime, "work", options)).resolves.toBe("done:work");
     await expect(action.run(runtime, "work", options)).resolves.toBe("done:work");
 
-    const [record] = await runtime.ledger.list();
+    const [record] = (await runtime.ledger.list()).records;
     expect(record?.providerPrincipalDigest).toMatch(/^[0-9a-f]{64}$/u);
     expect(JSON.stringify(record)).not.toContain("user-a");
     expect(JSON.stringify(record)).not.toContain("tenant-1");
@@ -66,7 +66,7 @@ describe("provider principal continuity (G1-A11)", () => {
       action.run(runtime, "work", { identity, authorization: allow, providerPrincipalRef: accountB }),
     ).rejects.toMatchObject({ code: "PRINCIPAL_CONFLICT" });
 
-    const [record] = await runtime.ledger.list();
+    const [record] = (await runtime.ledger.list()).records;
     expect(record?.state).toBe("succeeded");
     expect(record?.providerPrincipalDigest).toMatch(/^[0-9a-f]{64}$/u);
     expect(executions.count).toBe(1);
@@ -90,13 +90,13 @@ describe("provider principal continuity (G1-A11)", () => {
     const runtime = new OrdariumRuntime({ ledger: new MemoryLedger(), allowVolatileLedger: true });
 
     await action.run(runtime, "work", { identity, authorization: allow });
-    const [first] = await runtime.ledger.list();
+    const [first] = (await runtime.ledger.list()).records;
     expect(first?.providerPrincipalDigest).toBeUndefined();
 
     await expect(
       action.run(runtime, "work", { identity, authorization: allow, providerPrincipalRef: accountA }),
     ).resolves.toBe("done:work");
-    const [bound] = await runtime.ledger.list();
+    const [bound] = (await runtime.ledger.list()).records;
     expect(bound?.providerPrincipalDigest).toMatch(/^[0-9a-f]{64}$/u);
 
     await expect(
@@ -125,7 +125,7 @@ describe("provider principal continuity (G1-A11)", () => {
       }),
     ).rejects.toThrow(/subject/u);
 
-    const [record] = await runtime.ledger.list();
+    const [record] = (await runtime.ledger.list()).records;
     expect(record?.providerPrincipalDigest).toBeUndefined();
     expect(executions.count).toBe(0);
   });

@@ -48,4 +48,29 @@ export declare class InputTooLargeError extends OrdariumError {
 export declare class SimulatedProcessCrash extends OrdariumError {
     constructor(operationId?: string);
 }
+/**
+ * Stable infrastructure error family (G2 design spec §5). Callers decide on
+ * these codes; parsing raw SQLite messages is forbidden (G2-A07).
+ */
+export declare class LedgerOpenFailedError extends OrdariumError {
+    constructor(detail: string);
+}
+export declare class LedgerNewerSchemaError extends OrdariumError {
+    constructor(version: number);
+}
+export declare class LedgerMigrationFailedError extends OrdariumError {
+    constructor(detail: string);
+}
+export declare class LedgerBusyError extends OrdariumError {
+    constructor();
+}
+export declare class LedgerCorruptError extends OrdariumError {
+    constructor();
+}
+export declare class LedgerClosedError extends OrdariumError {
+    constructor();
+}
+export declare class LedgerFullError extends OrdariumError {
+    constructor();
+}
 //# sourceMappingURL=errors.d.ts.map

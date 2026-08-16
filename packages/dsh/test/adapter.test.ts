@@ -53,7 +53,7 @@ describe("DSH adapter", () => {
     await expect(tool.execute({ value: "hello" }, context())).resolves.toBe("HELLO");
     expect(calls).toBe(1);
     expect(tool.output.render({ value: "hello" }, "HELLO")).toEqual([{ type: "text", text: "HELLO" }]);
-    const [record] = await runtime.ledger.list();
+    const [record] = (await runtime.ledger.list()).records;
     expect(record?.identity).toMatchObject({
       source: "dsh",
       scope: "session-1",
@@ -75,7 +75,7 @@ describe("DSH adapter", () => {
     const runtime = new OrdariumRuntime({ allowVolatileLedger: true });
 
     await asDshTool(action, { runtime }).execute({ value: "hello" }, context("write-1"));
-    const [record] = await runtime.ledger.list();
+    const [record] = (await runtime.ledger.list()).records;
     expect(record?.authorization).toMatchObject({
       decision: "allow",
       kind: "host-admission",

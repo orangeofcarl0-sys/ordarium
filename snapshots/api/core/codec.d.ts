@@ -1,10 +1,11 @@
 import type { OperationRecord } from "./types.js";
 /**
  * The single complete OperationRecord codec owned by @ordarium/core
- * (docs/17 §9.2.5). TypeScript shape, runtime decode, length limits and
- * cross-state invariants have exactly one source: this module. Ledger
- * implementations (memory, SQLite, custom) must decode through it and never
- * grow their own validators.
+ * (docs/17 §9.2.5, G2 design spec §1). TypeScript shape, runtime decode,
+ * length limits and cross-state invariants have exactly one source: this
+ * module. Ledger implementations (memory, SQLite, custom) must decode
+ * through it and never grow their own validators. Only schemaVersion 2 is
+ * accepted; v1 shapes exist solely at the SQLite migration boundary.
  */
 export declare const RESOURCE_LIMITS: Readonly<{
     maxOperationIdLength: 64;
