@@ -114,3 +114,4 @@ export class HostAdapterHarness {
     return this.#port.invoke(action, input, invocation);
   }
 }
+export * from "./provider.js";

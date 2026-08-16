@@ -35,4 +35,5 @@ export declare class HostAdapterHarness {
     constructor(port: HostInvocationPort, options?: HostAdapterHarnessOptions);
     invoke<I extends JsonValue, O extends JsonValue>(action: Action<I, O>, input: unknown, options?: HostHarnessCallOptions): Promise<O>;
 }
+export * from "./provider.js";
 //# sourceMappingURL=index.d.ts.map
