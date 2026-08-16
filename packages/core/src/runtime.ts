@@ -21,6 +21,11 @@ import {
   UncertainOperationError,
 } from "./errors.js";
 import { assertJsonValue, canonicalJson, digestJson, type JsonValue } from "./json.js";
+import {
+  hasExternalSideEffect,
+  requiresAuthorization,
+  usesOperationKey,
+} from "./effects.js";
 import { MemoryLedger } from "./ledger.js";
 import type { HostInvocation, HostInvocationPort } from "./host.js";
 import type {
@@ -173,7 +178,7 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
       inputDigest,
       logicalKeyDigest,
       identity,
-      guarantee: action.effect.guarantee,
+      guarantee: action.effect.kind,
       state: "proposed",
       revision: 0,
       attempts: 0,
@@ -277,11 +282,11 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
     if (options.authorization !== undefined) {
       return options.authorization;
     }
-    if (!action.effect.requiresAuthorization) {
+    if (!requiresAuthorization(action.effect)) {
       return {
         decision: "allow",
         kind: "host-admission",
-        source: `implicit:${action.effect.guarantee}`,
+        source: `implicit:${action.effect.kind}`,
       };
     }
     if (this.#authorizer === undefined) {
@@ -292,7 +297,7 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
         name: action.name,
         version: action.version,
         description: action.description,
-        guarantee: action.effect.guarantee,
+        guarantee: action.effect.kind,
       },
       input,
       identity,
@@ -386,7 +391,12 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
     if (error instanceof SimulatedProcessCrash || error instanceof OperationBusyError) throw error;
 
     const context = this.#context(work.record, effectiveSignal);
-    if (effectiveSignal.aborted && action.effect.cancellable && action.cancel !== undefined) {
+    if (
+      effectiveSignal.aborted &&
+      action.effect.kind === "reconcilable" &&
+      action.effect.cancellable &&
+      action.cancel !== undefined
+    ) {
       try {
         await action.cancel(input, context);
       } catch {
@@ -394,7 +404,7 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
       }
     }
 
-    if (!action.effect.hasExternalSideEffect) {
+    if (!hasExternalSideEffect(action.effect)) {
       const failed = await this.#update(work.record, {
         state: effectiveSignal.aborted ? "cancelled" : "failed",
         claim: undefined,
@@ -521,7 +531,7 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
       throw new UncertainOperationError(claimed.operationId);
     }
 
-    if (action.effect.idempotency === "operation-key") {
+    if (usesOperationKey(action.effect)) {
       return this.#dispatchAndExecute(action, input, claimed, effectiveSignal);
     }
 
@@ -742,7 +752,7 @@ export function describeOperation(record: OperationRecord): string {
 function directIdentity<I extends JsonValue, O extends JsonValue>(
   action: Action<I, O>,
 ): InvocationIdentity {
-  if (action.effect.guarantee === "read-only" || action.effect.guarantee === "unmanaged") {
+  if (action.effect.kind === "read-only" || action.effect.kind === "unmanaged") {
     return { source: "direct", scope: "process", callId: randomUUID() };
   }
   throw new IdentityRequiredError();

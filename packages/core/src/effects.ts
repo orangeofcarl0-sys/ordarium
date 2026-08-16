@@ -5,15 +5,25 @@ export type GuaranteeLevel =
   | "reconcilable"
   | "unmanaged";
 
-export type IdempotencyMode = "none" | "operation-key";
+export type IdempotencyWindow =
+  | { readonly kind: "durable" }
+  | { readonly kind: "finite"; readonly expiresAfterMs: number };
 
-export interface EffectProfile {
-  readonly guarantee: GuaranteeLevel;
-  readonly hasExternalSideEffect: boolean;
-  readonly requiresAuthorization: boolean;
-  readonly idempotency: IdempotencyMode;
-  readonly cancellable: boolean;
-}
+/**
+ * A capability cross-section of the Action and its Provider, not a safety
+ * score (docs/13 §1.1). The redundant boolean fields of the private v1
+ * shape are derived from `kind` instead.
+ */
+export type EffectProfile =
+  | { readonly kind: "read-only" }
+  | { readonly kind: "guarded" }
+  | { readonly kind: "idempotent"; readonly window: IdempotencyWindow }
+  | {
+      readonly kind: "reconcilable";
+      readonly idempotencyWindow?: IdempotencyWindow | undefined;
+      readonly cancellable: boolean;
+    }
+  | { readonly kind: "unmanaged" };
 
 function freeze(profile: EffectProfile): EffectProfile {
   return Object.freeze(profile);
@@ -21,55 +31,51 @@ function freeze(profile: EffectProfile): EffectProfile {
 
 export const effects = Object.freeze({
   readOnly(): EffectProfile {
-    return freeze({
-      guarantee: "read-only",
-      hasExternalSideEffect: false,
-      requiresAuthorization: false,
-      idempotency: "none",
-      cancellable: true,
-    });
+    return freeze({ kind: "read-only" });
   },
 
   guarded(): EffectProfile {
-    return freeze({
-      guarantee: "guarded",
-      hasExternalSideEffect: true,
-      requiresAuthorization: true,
-      idempotency: "none",
-      cancellable: false,
-    });
+    return freeze({ kind: "guarded" });
   },
 
-  idempotent(): EffectProfile {
-    return freeze({
-      guarantee: "idempotent",
-      hasExternalSideEffect: true,
-      requiresAuthorization: true,
-      idempotency: "operation-key",
-      cancellable: false,
-    });
+  idempotent(options: { window?: IdempotencyWindow } = {}): EffectProfile {
+    return freeze({ kind: "idempotent", window: options.window ?? { kind: "durable" } });
   },
 
   reconcilable(options: {
-    idempotency?: IdempotencyMode;
+    idempotencyWindow?: IdempotencyWindow;
     cancellable?: boolean;
   } = {}): EffectProfile {
     return freeze({
-      guarantee: "reconcilable",
-      hasExternalSideEffect: true,
-      requiresAuthorization: true,
-      idempotency: options.idempotency ?? "none",
+      kind: "reconcilable",
+      ...(options.idempotencyWindow === undefined
+        ? {}
+        : { idempotencyWindow: options.idempotencyWindow }),
       cancellable: options.cancellable ?? false,
     });
   },
 
   unmanaged(): EffectProfile {
-    return freeze({
-      guarantee: "unmanaged",
-      hasExternalSideEffect: true,
-      requiresAuthorization: false,
-      idempotency: "none",
-      cancellable: false,
-    });
+    return freeze({ kind: "unmanaged" });
   },
 });
+
+/** Managed writes (guarded/idempotent/reconcilable) require authorization evidence. */
+export function requiresAuthorization(effect: EffectProfile): boolean {
+  return effect.kind !== "read-only" && effect.kind !== "unmanaged";
+}
+
+/** Only read-only actions provably create no external side effect. */
+export function hasExternalSideEffect(effect: EffectProfile): boolean {
+  return effect.kind !== "read-only";
+}
+
+/**
+ * True when the Action may be re-executed with the same operation key:
+ * an idempotent profile, or a reconcilable profile that also declares an
+ * idempotency window.
+ */
+export function usesOperationKey(effect: EffectProfile): boolean {
+  return effect.kind === "idempotent" ||
+    (effect.kind === "reconcilable" && effect.idempotencyWindow !== undefined);
+}

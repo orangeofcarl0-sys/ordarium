@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import {
   OrdariumRuntime,
+  requiresAuthorization,
   type Action,
   type AuthorizationDecision,
   type HostInvocation,
@@ -110,7 +111,7 @@ export function asDshTool<I extends JsonValue, O extends JsonValue>(
     async execute(args, context) {
       const input = action.input.parse(args);
       const identity = identityFromDsh(context, options);
-      const authorization = action.effect.requiresAuthorization
+      const authorization = requiresAuthorization(action.effect)
         ? await (options.authorize?.({ action, input, context }) ?? {
             decision: "allow",
             kind: "host-admission",

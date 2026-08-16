@@ -1,4 +1,4 @@
-import type { EffectProfile } from "./effects.js";
+import type { EffectProfile, IdempotencyWindow } from "./effects.js";
 import type { ActionSchema, JsonValue } from "./json.js";
 import type { AuthorizationDecision, InvocationIdentity, SafeError } from "./types.js";
 
@@ -66,11 +66,14 @@ export function defineAction<I extends JsonValue, O extends JsonValue>(
     throw new TypeError("Action description must not be empty");
   }
   assertEffectProfile(definition.effect);
-  if (definition.effect.guarantee === "reconcilable" && definition.reconcile === undefined) {
+  if (definition.effect.kind === "reconcilable" && definition.reconcile === undefined) {
     throw new TypeError("A reconcilable action must implement reconcile()");
   }
-  if (definition.cancel !== undefined && !definition.effect.cancellable) {
-    throw new TypeError("An Action with cancel() must declare a cancellable effect profile");
+  if (
+    definition.cancel !== undefined &&
+    (definition.effect.kind !== "reconcilable" || !definition.effect.cancellable)
+  ) {
+    throw new TypeError("An Action with cancel() must declare a cancellable reconcilable profile");
   }
 
   return Object.freeze({
@@ -83,20 +86,37 @@ export function defineAction<I extends JsonValue, O extends JsonValue>(
 }
 
 function assertEffectProfile(effect: EffectProfile): void {
-  const expected = {
-    "read-only": { sideEffect: false, authorization: false, idempotency: "none" },
-    guarded: { sideEffect: true, authorization: true, idempotency: "none" },
-    idempotent: { sideEffect: true, authorization: true, idempotency: "operation-key" },
-    reconcilable: { sideEffect: true, authorization: true, idempotency: effect.idempotency },
-    unmanaged: { sideEffect: true, authorization: false, idempotency: "none" },
-  } as const;
-  const profile = expected[effect.guarantee];
+  switch (effect.kind) {
+    case "read-only":
+    case "guarded":
+    case "unmanaged":
+      return;
+    case "idempotent":
+      assertIdempotencyWindow(effect.window);
+      return;
+    case "reconcilable":
+      if (typeof effect.cancellable !== "boolean") {
+        throw new TypeError("A reconcilable profile must declare cancellable: boolean");
+      }
+      if (effect.idempotencyWindow !== undefined) {
+        assertIdempotencyWindow(effect.idempotencyWindow);
+      }
+      return;
+  }
+}
+
+function assertIdempotencyWindow(window: IdempotencyWindow): void {
+  if (window === null || typeof window !== "object") {
+    throw new TypeError("An idempotency window must be an object");
+  }
+  if (window.kind === "durable") return;
+  if (window.kind !== "finite") {
+    throw new TypeError("An idempotency window kind must be durable or finite");
+  }
   if (
-    profile === undefined ||
-    effect.hasExternalSideEffect !== profile.sideEffect ||
-    effect.requiresAuthorization !== profile.authorization ||
-    effect.idempotency !== profile.idempotency
+    !Number.isSafeInteger(window.expiresAfterMs) ||
+    window.expiresAfterMs <= 0
   ) {
-    throw new TypeError(`Inconsistent effect profile: ${effect.guarantee}`);
+    throw new TypeError("A finite idempotency window requires a positive safe-integer expiresAfterMs");
   }
 }
