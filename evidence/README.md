@@ -8,10 +8,14 @@
 evidence/
   README.md                    本文件：目录约定与 Architecture Delta Sheet 模板
   compatibility-register.md    跨阶段 Compatibility Register（docs/17 §6）
-  G0/                          每个 Goal 一个子目录
-    baseline-report.md         验收 ID → 证据映射、命令输出摘要、已知缺口
-    target-contract-decisions.md  该阶段冻结的目标结构决策（按引用合并，不复制权威）
+  G<goal>/                     每个 Goal 一个子目录
+    design-spec.md             实现前冻结的目标形状（G2 起为标准约定：锚定当前实现现状、
+                               收敛 docs/12–17 分散目标为可实施合同、附验收 ID 映射）
+    delta-<id>.md              Architecture Delta Sheet（每个结构变化一份）
+    exit-report.md             验收 ID → 证据映射、命令输出摘要、已知缺口（Goal 退出时）
 ```
+
+design-spec 是后续 Goal 的进入条件：G3–G8 的 design-spec 已全部冻结（2026-08-16）；实现切片必须先对应 spec，再按 delta sheet 演进。规范权威仍在 `docs/12–17`，spec 只做收敛与锚定，冲突时以 12–17 为准。
 
 每个 Goal 退出时其子目录必须包含：
 
