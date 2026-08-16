@@ -13,6 +13,7 @@ import {
   AuthorizationRequiredError,
   IdentityRequiredError,
   InputTooLargeError,
+  LedgerCapabilityRequiredError,
   OperationBusyError,
   OperationCancelledError,
   OperationConflictError,
@@ -35,11 +36,18 @@ import type {
   AuthorizationDecision,
   AuthorizationEvidenceKind,
   InvocationIdentity,
+  LedgerCoordination,
   OperationLedger,
   OperationRecord,
   ProviderPrincipalRef,
   SafeError,
 } from "./types.js";
+
+const COORDINATION_COVERAGE: Record<LedgerCoordination, number> = {
+  "single-isolate": 0,
+  "single-process-exclusive": 1,
+  "local-multi-process": 2,
+};
 
 export type RuntimeCheckpoint = "after-claim" | "after-dispatch" | "after-reconcile";
 
@@ -71,6 +79,19 @@ export interface OrdariumRuntimeOptions {
   clock?: (() => Date) | undefined;
   hooks?: RuntimeHooks | undefined;
   maxPersistedJsonBytes?: number | undefined;
+  /**
+   * Deployment topology the installation declares (docs/13 §6.1). Defaults
+   * to "single-isolate" for direct core embedding; the managed DSH path
+   * declares "local-multi-process".
+   */
+  deploymentCoordination?: LedgerCoordination | undefined;
+  /**
+   * Explicit weak-mode opt-in for tests and embedded deployments that
+   * knowingly run managed writes on a volatile ledger. No crash or restart
+   * guarantee is provided; production managed writes must fail closed
+   * instead (G1-A10).
+   */
+  allowVolatileLedger?: boolean | undefined;
 }
 
 interface InFlight {
@@ -90,6 +111,8 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
   readonly #clock: () => Date;
   readonly #hooks?: RuntimeHooks | undefined;
   readonly #maxPersistedJsonBytes: number;
+  readonly #deploymentCoordination: LedgerCoordination;
+  readonly #allowVolatileLedger: boolean;
   readonly #inFlight = new Map<string, InFlight>();
 
   constructor(options: OrdariumRuntimeOptions = {}) {
@@ -100,6 +123,8 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
     this.#clock = options.clock ?? (() => new Date());
     this.#hooks = options.hooks;
     this.#maxPersistedJsonBytes = options.maxPersistedJsonBytes ?? 1_048_576;
+    this.#deploymentCoordination = options.deploymentCoordination ?? "single-isolate";
+    this.#allowVolatileLedger = options.allowVolatileLedger ?? false;
     if (!Number.isSafeInteger(this.#maxPersistedJsonBytes) || this.#maxPersistedJsonBytes <= 0) {
       throw new TypeError("maxPersistedJsonBytes must be a positive safe integer");
     }
@@ -116,6 +141,7 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
     if (inputBytes > RESOURCE_LIMITS.maxInputJsonBytes) {
       throw new InputTooLargeError(RESOURCE_LIMITS.maxInputJsonBytes);
     }
+    this.#assertLedgerEligibility(action);
     const identity = options.identity ?? directIdentity(action);
     assertInvocationIdentity(identity);
     if (options.providerPrincipalRef !== undefined) {
@@ -668,6 +694,37 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
       record.logicalKeyDigest !== logicalKeyDigest
     ) {
       throw new OperationConflictError(record.operationId);
+    }
+  }
+
+  /**
+   * Ledger capability gate (docs/13 §6.1, G1-A10): managed writes require a
+   * crash-durable ledger with live lease, semantic history and coordination
+   * covering the declared deployment topology. Anything less fails closed
+   * before an operation exists; the explicit volatile opt-in is reserved for
+   * tests and embedded weak modes with no restart guarantee.
+   */
+  #assertLedgerEligibility<I extends JsonValue, O extends JsonValue>(
+    action: Action<I, O>,
+  ): void {
+    const kind = action.effect.kind;
+    if (kind === "read-only" || kind === "unmanaged") return;
+    if (this.#allowVolatileLedger) return;
+    const caps = this.ledger.capabilities;
+    if (caps.semanticCas !== true) {
+      throw new LedgerCapabilityRequiredError("transactional semantic compare-and-set");
+    }
+    if (caps.durability !== "crash-durable" || !caps.liveLease || !caps.semanticHistory) {
+      throw new LedgerCapabilityRequiredError(
+        "crash durability, live lease and semantic history for managed writes",
+      );
+    }
+    if (
+      COORDINATION_COVERAGE[caps.coordination] < COORDINATION_COVERAGE[this.#deploymentCoordination]
+    ) {
+      throw new LedgerCapabilityRequiredError(
+        `coordination covering a ${this.#deploymentCoordination} deployment (ledger declares ${caps.coordination})`,
+      );
     }
   }
 

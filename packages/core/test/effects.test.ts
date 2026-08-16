@@ -116,7 +116,7 @@ describe("EffectProfile discriminated union", () => {
   });
 
   it("persists the profile kind as the record guarantee", async () => {
-    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger() });
+    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger(), allowVolatileLedger: true });
     await runtime.run(defineWith(effects.guarded()), "work", { identity, authorization: allow });
     const [record] = await runtime.ledger.list();
     expect(record?.guarantee).toBe("guarded");

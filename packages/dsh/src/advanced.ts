@@ -187,6 +187,7 @@ export function createDshOrdarium(options: CreateDshOrdariumOptions = {}): DshOr
     : undefined;
   const runtime = options.runtime ?? new OrdariumRuntime({
     ledger: new SqliteLedger(databasePath as string),
+    deploymentCoordination: "local-multi-process",
   });
 
   return {

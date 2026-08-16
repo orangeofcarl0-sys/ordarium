@@ -207,7 +207,7 @@ describe("resource envelope (G1-A07)", () => {
         return input.value.slice(0, 1);
       },
     });
-    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger() });
+    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger(), allowVolatileLedger: true });
 
     await expect(
       action.run(runtime, { value: "x".repeat(1_048_577) }, {
@@ -230,7 +230,7 @@ describe("resource envelope (G1-A07)", () => {
       effect: effects.guarded(),
       execute: (input) => input,
     });
-    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger() });
+    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger(), allowVolatileLedger: true });
 
     await expect(
       action.run(runtime, "work", {

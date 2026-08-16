@@ -83,7 +83,22 @@ export interface OperationListFilter {
     state?: OperationState | undefined;
     limit?: number | undefined;
 }
+export type LedgerCoordination = "single-isolate" | "single-process-exclusive" | "local-multi-process";
+/**
+ * Static, honest capability declaration every OperationLedger implementation
+ * must provide (docs/13 §6.1). The runtime gate reads this contract - it
+ * never infers durability from an implementation class name, and a managed
+ * write on an insufficient ledger fails closed before any operation exists.
+ */
+export interface LedgerCapabilities {
+    readonly durability: "volatile" | "crash-durable";
+    readonly coordination: LedgerCoordination;
+    readonly semanticCas: true;
+    readonly liveLease: boolean;
+    readonly semanticHistory: boolean;
+}
 export interface OperationLedger {
+    readonly capabilities: LedgerCapabilities;
     get(operationId: string): Promise<OperationRecord | undefined>;
     create(record: OperationRecord): Promise<{
         created: boolean;

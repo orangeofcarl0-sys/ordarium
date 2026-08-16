@@ -23,6 +23,20 @@ afterEach(() => {
 });
 
 describe("SqliteLedger", () => {
+  it("declares crash-durable local-multi-process capabilities", () => {
+    const directory = mkdtempSync(join(tmpdir(), "ordarium-sqlite-caps-"));
+    directories.push(directory);
+    const ledger = new SqliteLedger(join(directory, "operations.sqlite"));
+    expect(ledger.capabilities).toEqual({
+      durability: "crash-durable",
+      coordination: "local-multi-process",
+      semanticCas: true,
+      liveLease: true,
+      semanticHistory: true,
+    });
+    ledger.close();
+  });
+
   it("preserves terminal operations and revision history across reopen", async () => {
     const directory = mkdtempSync(join(tmpdir(), "ordarium-sqlite-"));
     directories.push(directory);

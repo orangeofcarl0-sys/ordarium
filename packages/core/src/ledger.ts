@@ -11,6 +11,14 @@ function clone<T>(value: T): T {
 }
 
 export class MemoryLedger implements OperationLedger {
+  readonly capabilities = {
+    durability: "volatile",
+    coordination: "single-isolate",
+    semanticCas: true,
+    liveLease: true,
+    semanticHistory: true,
+  } as const;
+
   readonly #records = new Map<string, OperationRecord>();
   readonly #events = new Map<string, OperationEvent[]>();
 

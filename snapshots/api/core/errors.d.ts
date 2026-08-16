@@ -15,6 +15,9 @@ export declare class PrincipalConflictError extends OrdariumError {
 export declare class IdentityRequiredError extends OrdariumError {
     constructor();
 }
+export declare class LedgerCapabilityRequiredError extends OrdariumError {
+    constructor(requirement: string);
+}
 export declare class ActionDeniedError extends OrdariumError {
     constructor(operationId: string);
 }

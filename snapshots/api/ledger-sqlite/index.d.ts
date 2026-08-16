@@ -4,6 +4,13 @@ export interface SqliteLedgerOptions {
 }
 export declare class SqliteLedger implements OperationLedger {
     #private;
+    readonly capabilities: {
+        readonly durability: "crash-durable";
+        readonly coordination: "local-multi-process";
+        readonly semanticCas: true;
+        readonly liveLease: true;
+        readonly semanticHistory: true;
+    };
     readonly path: string;
     constructor(path: string, options?: SqliteLedgerOptions);
     get(operationId: string): Promise<OperationRecord | undefined>;

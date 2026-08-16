@@ -29,7 +29,7 @@ describe("HostAdapterHarness", () => {
   it("converges a replayed host call onto one operation", async () => {
     const executions = { count: 0 };
     const action = guardedAction("harness.replay", executions);
-    const runtime = new OrdariumRuntime();
+    const runtime = new OrdariumRuntime({ allowVolatileLedger: true });
     const harness = new HostAdapterHarness(runtime);
 
     await expect(
@@ -46,7 +46,7 @@ describe("HostAdapterHarness", () => {
   it("keeps sibling calls from the same root as separate operations", async () => {
     const executions = { count: 0 };
     const action = guardedAction("harness.siblings", executions);
-    const runtime = new OrdariumRuntime();
+    const runtime = new OrdariumRuntime({ allowVolatileLedger: true });
     const harness = new HostAdapterHarness(runtime);
 
     await harness.invoke(action, "a", { callId: "A1", rootCallId: "R", authorization: allow });
@@ -59,7 +59,7 @@ describe("HostAdapterHarness", () => {
   it("carries lineage and actor through the invocation for audit without affecting identity", async () => {
     const executions = { count: 0 };
     const action = guardedAction("harness.lineage", executions);
-    const runtime = new OrdariumRuntime();
+    const runtime = new OrdariumRuntime({ allowVolatileLedger: true });
     const harness = new HostAdapterHarness(runtime);
 
     await harness.invoke(action, "a", {

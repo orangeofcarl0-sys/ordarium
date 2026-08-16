@@ -19,6 +19,14 @@ export interface SqliteLedgerOptions {
 }
 
 export class SqliteLedger implements OperationLedger {
+  readonly capabilities = {
+    durability: "crash-durable",
+    coordination: "local-multi-process",
+    semanticCas: true,
+    liveLease: true,
+    semanticHistory: true,
+  } as const;
+
   readonly path: string;
   readonly #database: DatabaseSync;
   #closed = false;

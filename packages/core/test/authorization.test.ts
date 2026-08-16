@@ -50,7 +50,7 @@ describe("classified authorization evidence", () => {
   it("rejects contradictory evidence after a durable allow (G1-A02)", async () => {
     const executions = { count: 0 };
     const action = guardedAction("auth.allow-first", executions);
-    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger() });
+    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger(), allowVolatileLedger: true });
 
     await expect(action.run(runtime, "work", { identity, authorization: allow }))
       .resolves.toBe("done:work");
@@ -68,7 +68,7 @@ describe("classified authorization evidence", () => {
   it("rejects contradictory evidence after a durable deny (G1-A02)", async () => {
     const executions = { count: 0 };
     const action = guardedAction("auth.deny-first", executions);
-    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger() });
+    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger(), allowVolatileLedger: true });
 
     await expect(action.run(runtime, "work", { identity, authorization: deny }))
       .rejects.toBeInstanceOf(ActionDeniedError);
@@ -84,7 +84,7 @@ describe("classified authorization evidence", () => {
   it("accepts consistent evidence on re-entry without touching the persisted decision", async () => {
     const executions = { count: 0 };
     const action = guardedAction("auth.consistent", executions);
-    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger() });
+    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger(), allowVolatileLedger: true });
 
     await expect(action.run(runtime, "work", { identity, authorization: allow }))
       .resolves.toBe("done:work");
@@ -96,7 +96,7 @@ describe("classified authorization evidence", () => {
   it("rejects unknown evidence kinds before any authorization is persisted", async () => {
     const executions = { count: 0 };
     const action = guardedAction("auth.bad-kind", executions);
-    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger() });
+    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger(), allowVolatileLedger: true });
 
     await expect(
       action.run(runtime, "work", {
@@ -118,7 +118,7 @@ describe("classified authorization evidence", () => {
   it("persists trusted human-approval evidence exactly as the host adapter provided it", async () => {
     const executions = { count: 0 };
     const action = guardedAction("auth.human", executions);
-    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger() });
+    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger(), allowVolatileLedger: true });
 
     await expect(
       action.run(runtime, "work", {
@@ -141,7 +141,7 @@ describe("classified authorization evidence", () => {
       effect: effects.readOnly(),
       execute: (input) => input,
     });
-    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger() });
+    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger(), allowVolatileLedger: true });
 
     await expect(action.run(runtime, "work", { identity })).resolves.toBe("work");
     const [record] = await runtime.ledger.list();

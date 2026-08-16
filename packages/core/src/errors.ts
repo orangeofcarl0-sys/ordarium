@@ -45,6 +45,15 @@ export class IdentityRequiredError extends OrdariumError {
   }
 }
 
+export class LedgerCapabilityRequiredError extends OrdariumError {
+  constructor(requirement: string) {
+    super(
+      "LEDGER_CAPABILITY_REQUIRED",
+      `This action requires a ledger with ${requirement}; configure a conformant durable ledger or explicitly opt into the weaker mode`,
+    );
+  }
+}
+
 export class ActionDeniedError extends OrdariumError {
   constructor(operationId: string) {
     super("ACTION_DENIED", "The action was denied", operationId);

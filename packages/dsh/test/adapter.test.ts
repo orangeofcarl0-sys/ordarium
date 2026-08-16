@@ -40,7 +40,7 @@ describe("DSH adapter", () => {
         return input.value.toUpperCase();
       },
     });
-    const runtime = new OrdariumRuntime();
+    const runtime = new OrdariumRuntime({ allowVolatileLedger: true });
     const tool = asDshTool(action, { runtime });
 
     expect(tool).toMatchObject({
@@ -72,7 +72,7 @@ describe("DSH adapter", () => {
       effect: effects.guarded(),
       execute: (input) => input.value,
     });
-    const runtime = new OrdariumRuntime();
+    const runtime = new OrdariumRuntime({ allowVolatileLedger: true });
 
     await asDshTool(action, { runtime }).execute({ value: "hello" }, context("write-1"));
     const [record] = await runtime.ledger.list();
@@ -107,7 +107,7 @@ describe("DSH adapter", () => {
         },
       },
       [action],
-      { runtime: new OrdariumRuntime() },
+      { runtime: new OrdariumRuntime({ allowVolatileLedger: true }) },
     );
 
     expect(registered).toHaveLength(1);

@@ -87,7 +87,7 @@ describe("OrdariumRuntime", () => {
       },
     });
     const ledger = new MemoryLedger();
-    const runtime = new OrdariumRuntime({ ledger });
+    const runtime = new OrdariumRuntime({ ledger, allowVolatileLedger: true });
 
     await expect(action.run(runtime, { value: "a" }, { identity })).resolves.toEqual({ accepted: "a" });
     await expect(action.run(runtime, { value: "a" }, { identity })).resolves.toEqual({ accepted: "a" });
@@ -114,7 +114,7 @@ describe("OrdariumRuntime", () => {
       effect: effects.readOnly(),
       execute: (input) => ({ accepted: input.value }),
     });
-    const runtime = new OrdariumRuntime();
+    const runtime = new OrdariumRuntime({ allowVolatileLedger: true });
 
     await action.run(runtime, { value: "first" }, { identity });
     await expect(action.run(runtime, { value: "second" }, { identity }))
@@ -142,8 +142,8 @@ describe("OrdariumRuntime", () => {
         return { accepted: input.value };
       },
     });
-    const firstRuntime = new OrdariumRuntime({ ledger, ownerId: "first", leaseMs: 30 });
-    const secondRuntime = new OrdariumRuntime({ ledger, ownerId: "second", leaseMs: 30 });
+    const firstRuntime = new OrdariumRuntime({ ledger, ownerId: "first", leaseMs: 30, allowVolatileLedger: true });
+    const secondRuntime = new OrdariumRuntime({ ledger, ownerId: "second", leaseMs: 30, allowVolatileLedger: true });
 
     const first = action.run(firstRuntime, { value: "held" }, { identity });
     await didStart;
@@ -167,7 +167,7 @@ describe("OrdariumRuntime", () => {
       execute: (input) => ({ accepted: input.value }),
     });
 
-    await expect(action.run(new OrdariumRuntime(), { value: "x" }, { identity }))
+    await expect(action.run(new OrdariumRuntime({ allowVolatileLedger: true }), { value: "x" }, { identity }))
       .rejects.toBeInstanceOf(AuthorizationRequiredError);
   });
 
@@ -181,7 +181,7 @@ describe("OrdariumRuntime", () => {
       effect: effects.readOnly(),
       execute: () => ({ accepted: "this result is intentionally too large" }),
     });
-    const runtime = new OrdariumRuntime({ maxPersistedJsonBytes: 16 });
+    const runtime = new OrdariumRuntime({ maxPersistedJsonBytes: 16, allowVolatileLedger: true });
 
     await expect(action.run(runtime, { value: "x" }, { identity }))
       .rejects.toBeInstanceOf(PersistedValueTooLargeError);
@@ -204,7 +204,7 @@ describe("OrdariumRuntime", () => {
         throw new Error("transport disconnected");
       },
     });
-    const runtime = new OrdariumRuntime();
+    const runtime = new OrdariumRuntime({ allowVolatileLedger: true });
     const options = {
       identity,
       authorization: { decision: "allow" as const, kind: "policy-decision" as const, source: "test" },
@@ -239,7 +239,7 @@ describe("OrdariumRuntime", () => {
         return value;
       },
     });
-    const runtime = new OrdariumRuntime();
+    const runtime = new OrdariumRuntime({ allowVolatileLedger: true });
     const options = {
       identity,
       authorization: { decision: "allow" as const, kind: "policy-decision" as const, source: "test" },
@@ -275,7 +275,7 @@ describe("OrdariumRuntime", () => {
           : { status: "succeeded", value, receipt: { provider: "example" } };
       },
     });
-    const runtime = new OrdariumRuntime();
+    const runtime = new OrdariumRuntime({ allowVolatileLedger: true });
     const options = {
       identity,
       authorization: { decision: "allow" as const, kind: "policy-decision" as const, source: "test" },

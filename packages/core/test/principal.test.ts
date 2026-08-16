@@ -40,7 +40,7 @@ describe("provider principal continuity (G1-A11)", () => {
   it("persists only the digest and reuses the same operation for the same principal", async () => {
     const executions = { count: 0 };
     const action = guardedAction("principal.same", executions);
-    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger() });
+    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger(), allowVolatileLedger: true });
     const options = { identity, authorization: allow, providerPrincipalRef: accountA };
 
     await expect(action.run(runtime, "work", options)).resolves.toBe("done:work");
@@ -56,7 +56,7 @@ describe("provider principal continuity (G1-A11)", () => {
   it("fails closed when a bound operation is retried with a different principal", async () => {
     const executions = { count: 0 };
     const action = guardedAction("principal.swap", executions);
-    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger() });
+    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger(), allowVolatileLedger: true });
 
     await action.run(runtime, "work", { identity, authorization: allow, providerPrincipalRef: accountA });
     await expect(
@@ -75,7 +75,7 @@ describe("provider principal continuity (G1-A11)", () => {
   it("fails closed when a bound operation is retried without any principal ref", async () => {
     const executions = { count: 0 };
     const action = guardedAction("principal.missing", executions);
-    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger() });
+    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger(), allowVolatileLedger: true });
 
     await action.run(runtime, "work", { identity, authorization: allow, providerPrincipalRef: accountA });
     await expect(
@@ -87,7 +87,7 @@ describe("provider principal continuity (G1-A11)", () => {
   it("adopts the first presented principal for a previously unbound operation", async () => {
     const executions = { count: 0 };
     const action = guardedAction("principal.adopt", executions);
-    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger() });
+    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger(), allowVolatileLedger: true });
 
     await action.run(runtime, "work", { identity, authorization: allow });
     const [first] = await runtime.ledger.list();
@@ -108,7 +108,7 @@ describe("provider principal continuity (G1-A11)", () => {
   it("rejects malformed principal refs before persisting anything", async () => {
     const executions = { count: 0 };
     const action = guardedAction("principal.invalid", executions);
-    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger() });
+    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger(), allowVolatileLedger: true });
 
     await expect(
       action.run(runtime, "work", {

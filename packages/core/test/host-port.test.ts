@@ -32,7 +32,7 @@ describe("HostInvocationPort", () => {
       },
     });
     const ledger = new MemoryLedger();
-    const runtime = new OrdariumRuntime({ ledger });
+    const runtime = new OrdariumRuntime({ ledger, allowVolatileLedger: true });
 
     await expect(action.run(runtime, "work")).rejects.toBeInstanceOf(IdentityRequiredError);
     await expect(action.run(runtime, "work")).rejects.toMatchObject({ code: "IDENTITY_REQUIRED" });
@@ -59,7 +59,7 @@ describe("HostInvocationPort", () => {
       effect: effects.unmanaged(),
       execute: (input) => input,
     });
-    const runtime = new OrdariumRuntime();
+    const runtime = new OrdariumRuntime({ allowVolatileLedger: true });
 
     await expect(runtime.run(readOnly, "a")).resolves.toBe("a");
     await expect(runtime.run(unmanaged, "b")).resolves.toBe("b");
@@ -79,7 +79,7 @@ describe("HostInvocationPort", () => {
         return `done:${input}`;
       },
     });
-    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger() });
+    const runtime = new OrdariumRuntime({ ledger: new MemoryLedger(), allowVolatileLedger: true });
     const port: HostInvocationPort = runtime;
     const invocation = {
       identity: { source: "test", scope: "host-port", callId: "call-1" },
