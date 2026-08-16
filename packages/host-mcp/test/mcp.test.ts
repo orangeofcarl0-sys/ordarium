@@ -5,7 +5,7 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
-import { OrdariumRuntime, defineAction, defineSchema, effects } from "@ordarium/core";
+import { OrdariumRuntime, defineAction, defineSchema, effects, type Action, type JsonValue } from "@ordarium/core";
 import { SqliteLedger } from "@ordarium/ledger-sqlite";
 import { asDshTool } from "@ordarium/dsh/advanced";
 import { afterEach, describe, expect, it } from "vitest";
@@ -263,5 +263,52 @@ describe("@ordarium/host-mcp (G5-A09/A12)", () => {
   it("keeps the kernel free of MCP types (A10/A12)", async () => {
     const core = await import("@ordarium/core");
     expect(Object.keys(core).some((name) => /mcp/iu.test(name))).toBe(false);
+  });
+
+  it("admits managed calls with host-admission evidence when no authorizer is wired", async () => {
+    const { createMcpOrdarium } = await import("../src/index.js");
+    const runtime = new OrdariumRuntime({ allowVolatileLedger: true });
+    const echoInput = defineSchema(
+      {
+        type: "object",
+        properties: { value: { type: "string" } },
+        required: ["value"],
+        additionalProperties: false,
+      },
+      (value) => {
+        if (value === null || typeof value !== "object" || typeof (value as { value?: unknown }).value !== "string") {
+          throw new TypeError("expected { value: string }");
+        }
+        return value as { value: string };
+      },
+    );
+    const output = defineSchema({ type: "string" }, (value) => {
+      if (typeof value !== "string") throw new TypeError("expected string");
+      return value;
+    });
+    const server = createMcpOrdarium({
+      runtime,
+      actions: [defineAction({
+        name: "demo.echo",
+        version: "1",
+        description: "Echo",
+        input: echoInput,
+        output,
+        effect: effects.guarded(),
+        execute: (input) => input.value,
+      }) as unknown as Action<JsonValue, JsonValue>],
+    });
+    const response = await server.handle({
+      jsonrpc: "2.0", id: 1, method: "tools/call",
+      params: { name: "demo.echo", arguments: { value: "direct" } },
+    }) as { result: { isError: boolean } };
+    expect(response.result.isError).toBe(false);
+    const [record] = (await runtime.ledger.list()).records;
+    expect(record?.authorization).toMatchObject({
+      kind: "host-admission",
+      source: "mcp:tool-body-admitted",
+    });
+    expect(record?.identity).toMatchObject({ source: "mcp", scope: "mcp-client" });
+    await server.stop();
   });
 });

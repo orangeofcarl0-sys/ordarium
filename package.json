@@ -14,6 +14,7 @@
     "test:watch": "vitest",
     "check": "pnpm run test",
     "verify:architecture": "node tools/verify-architecture.mjs",
+    "verify:matrix": "node tools/node-matrix.mjs",
     "snapshots:update": "node tools/verify-architecture.mjs --update"
   },
   "devDependencies": {

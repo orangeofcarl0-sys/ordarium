@@ -39,8 +39,10 @@ MCP fixture 失败动作的期望被诚实语义纠正（guarded 抛错 → `OPE
 ## 5. 环境受限项（携至 G7，非静默跳过）
 
 1. **真实 DSH 包**（官方 ToolDefinition/Cordis lifecycle/HMR fixture）：本环境无可安装的 DSH 发布物 → 以合同级 + 进程级 fixture 替代；G7 发布门前必须接入真实包补 A02/A08 终验（`COMPAT-DSH-001` 剩余部分）。
-2. **官方 MCP SDK client**：协议级客户端已证明真实 stdio 往返；SDK 可得时替换 fixture 客户端，服务器合同不变。
-3. Node 24.15 真机矩阵（同 G2 遗留）。
+2. ~~**官方 MCP SDK client**~~ → **已闭环（2026-08-17 补录）**：`@modelcontextprotocol/sdk@1.30` 以 devDependency 接入，`sdk-client.test.ts` 官方 client 走 stdio 全往返（tools/list、callTool、错误映射）；服务器运行时仍零依赖。
+3. ~~**Node 24.15 真机矩阵**~~ → **已闭环**：Docker 双腿矩阵（24.15.0/24.19.0）全绿，见 `../G7/node-matrix-report.md`。
+
+> Addendum（2026-08-17）：2、3 由用户提供的 Docker/网络环境完成；矩阵执行同时修复了 host-mcp tsconfig 缺 `references` 的干净环境构建缺陷（详见矩阵报告 §3）。
 
 ## 6. 最终命令与输出
 

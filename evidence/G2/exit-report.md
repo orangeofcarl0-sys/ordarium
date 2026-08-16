@@ -24,7 +24,7 @@
 | G2-A07 infra 错误族 | 同文件 "maps infrastructure failures..."：busy（真实锁）/closed/corrupt/newer-schema/foreign-app 全部稳定 code；损坏读取 `LEDGER_CORRUPT` |
 | G2-A08 备份 | 同文件 "backs up a WAL database..."：checkpoint(TRUNCATE) + 副本 reopen，current/history 一致 |
 | G2-A09 旧备份恢复 | 同文件 "reconverges through the provider operation key..."：恢复后重投经同 operation key 与 Provider 事实收敛，业务效果计数不增 |
-| G2-A10 Node 政策 | engines 已冻结（ledger-sqlite/dsh `>=24.15.0`，core/testing `>=24.0.0`）；**真机 24.15 矩阵属 G7**（本机 24.14.1 为开发验证） |
+| G2-A10 Node 政策 | engines 已冻结（ledger-sqlite/dsh `>=24.15.0`，core/testing `>=24.0.0`）；**真机矩阵已闭环（2026-08-17 补录）**：Docker 双腿 24.15.0/24.19.0 各 118 测试 + verify 全绿，见 `../G7/node-matrix-report.md`（`pnpm verify:matrix` 可复跑） |
 | G2-A11 能力矩阵 | `core/test/capability.test.ts`（G1-007 交付，v2 下全绿） |
 | G2-A12 双宿主共账 | 同文件 "shares one ledger across two hosts..."：业务键跨宿主汇合为单 operation、默认 identity 不折叠、`identity.source` 可区分审计 |
 
@@ -47,7 +47,9 @@
 
 - finite `idempotencyExpiresAt` 的执行期强制、quiesce/drain 生命周期、统一 recovery evaluator → **G3**；
 - Operations/recovery material/跨 agent 审计视图 → G4（分页合同已就绪，G4 只消费）；
-- 真实 24.15+ Node 矩阵与 tarball 消费验证 → G7。
+- Operations/recovery material/跨 agent 审计视图 → G4（已完成）；真实 DSH lifecycle → G5（已完成）；
+- tarball 消费验证与发布工程 → G7；
+- ~~真机 24.15+ Node 矩阵~~ → **已闭环**（`../G7/node-matrix-report.md`）。
 
 ## 7. 最终命令与输出
 
