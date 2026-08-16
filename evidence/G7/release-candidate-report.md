@@ -55,6 +55,14 @@
 - **公共 npm 发布推迟**，触发条件：DSH 正式公开且真实宿主终验（A02/A08）通过、或生态出现明确的 registry 需求。届时按上文命令执行（`npm publish <tarball>` 记得 `./` 前缀与 `--otp`）。
 - 备选记录：GitHub Packages 要求 scope = GitHub owner（`@ordarium/*` 需更名为 `@<owner>/*`）；若未来走 GPR 需一次包名决议。
 
+### 仓库拆分执行（2026-08-17，所有者裁定"彻底拆开"）
+
+- 单仓经 git-filter-repo 拆为两个**私有**独立仓库，历史各自保留（Ordarium 24 commits；Palimpsest 25 commits）：
+  - `orangeofcarl0-sys/ordarium`——五包 + docs 12–17 + evidence + 工具；拆分后全门复验：140 测试、verify:architecture、verify:docs（8 文档）；tag `ordarium-v1.0.0` 已推送；GitHub Release `ordarium-v1.0.0` 附五 tarball。
+  - `orangeofcarl0-sys/palimpsest`——Python 线 + docs 00–11 + raw-notes；101 测试复验通过。
+- 跨线链接全部外链化；单包 git 依赖限制（`workspace:*` 无法在 git 安装语境解析）如实写入 README；消费方式 = 同 workspace 开发，或 Release 五 tarball 一次安装。
+- 原单仓目录（F:/Codex_Work_Space/Palimpsest）保留为历史存档，不再推进。
+
 ## 6. 最终命令与输出
 
 ```text
