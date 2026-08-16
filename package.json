@@ -1,0 +1,24 @@
+{
+  "name": "ordarium-workspace",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.16.0",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean",
+    "test": "pnpm run build && vitest run",
+    "test:watch": "vitest",
+    "check": "pnpm run test",
+    "verify:architecture": "node tools/verify-architecture.mjs",
+    "snapshots:update": "node tools/verify-architecture.mjs --update"
+  },
+  "devDependencies": {
+    "@types/node": "26.2.0",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  }
+}
