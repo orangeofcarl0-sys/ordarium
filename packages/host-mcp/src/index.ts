@@ -3,6 +3,7 @@ import { createInterface } from "node:readline";
 import {
   OrdariumError,
   OrdariumRuntime,
+  projectModelView,
   requiresAuthorization,
   type Action,
   type AuthorizationDecision,
@@ -100,6 +101,23 @@ export function createMcpOrdarium(options: McpOrdariumOptions): McpOrdarium {
   };
 
   const callAction = async (name: string, rawArguments: unknown, callId: string) => {
+    if (name === "ordarium_inspect") {
+      if (inspectAuthz === undefined) {
+        return errorResult("OPERATOR_AUTHORIZATION_REQUIRED: operations tools are not registered");
+      }
+      const operationId = (rawArguments as { operationId?: unknown })?.operationId;
+      if (typeof operationId !== "string") {
+        return errorResult("Invalid params: operationId is required");
+      }
+      const record = await runtime.ledger.get(operationId);
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify(record === undefined ? { found: false } : { found: true, view: projectModelView(record) }),
+        }],
+        isError: false,
+      };
+    }
     const action = byName.get(name);
     if (action === undefined) {
       return errorResult(`Unknown tool: ${name}`);

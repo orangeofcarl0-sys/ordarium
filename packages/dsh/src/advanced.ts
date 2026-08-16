@@ -287,3 +287,6 @@ function findAgentScope(agent: unknown): string | undefined {
 function renderJson(value: JsonValue): string {
   return typeof value === "string" ? value : JSON.stringify(value, null, 2);
 }
+
+export { createOrdariumPlugin } from "./plugin.js";
+export type { OrdariumPluginOptions, OrdariumPluginOps, OrdariumDshPlugin } from "./plugin.js";

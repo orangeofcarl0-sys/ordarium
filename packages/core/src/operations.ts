@@ -185,7 +185,7 @@ export function createOperations(options: CreateOperationsOptions = {}): Ordariu
   };
 }
 
-function assertOperatorAuthorization(
+export function assertOperatorAuthorization(
   authorization: OperatorAuthorization,
   required: "operations" | "operations:reconcile",
 ): void {

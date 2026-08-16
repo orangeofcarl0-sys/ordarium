@@ -14,6 +14,7 @@ const curatedRootValues = new Set([
 const advancedValues = new Set([
   "asDshTool",
   "createDshOrdarium",
+  "createOrdariumPlugin",
   "defaultDatabasePath",
   "registerActions",
 ]);
@@ -27,6 +28,7 @@ const forbiddenAtRoot = [
   "SqliteLedger",
   "asDshTool",
   "createDshOrdarium",
+  "createOrdariumPlugin",
   "defaultDatabasePath",
   "registerActions",
 ];

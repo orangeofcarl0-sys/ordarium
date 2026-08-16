@@ -25,6 +25,8 @@ host-mcp 已作为第二宿主运行；HostInvocationPort + 宿主 conformance h
 
 ## 4. Palimpsest 缝（versioned Host Adapter only）
 
+> **2026-08-17 方向修订（G9 冻结重申）**：Palimpsest 的首选形态是 **DSH 插件**——进程内消费 `@ordarium/dsh`（或 Ordarium 官方插件壳的共享实例），承担编排层（Goal Compiler/Task DAG/Context Compiler/预算/证据），其副作用经 Action invocation、结果消费 terminal/uncertain。本节的 versioned Host Adapter 缝降级为**次选**：仅在 Palimpsest 保持独立运行时（如 Python 侧进程）时启用。
+
 - 触发条件：Palimpsest Runtime 稳定重构完成并真实需要调用 Ordarium Action；
 - 形态：`@ordarium/host-palimpsest`（或宿主侧 adapter）实现 HostInvocationPort——提供稳定 identity、分类 evidence、signal、recovery material；语义为"已授权副作用的 invocation 消费 terminal/uncertain 结果"（docs/14 §5）；
 - 禁止：core 读取 Palimpsest Event Store、Palimpsest 写 Ordarium 内部表、任何内部模块耦合（两线只经显式版本化 adapter 相连）；

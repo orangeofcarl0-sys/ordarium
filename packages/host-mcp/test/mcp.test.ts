@@ -260,6 +260,81 @@ describe("@ordarium/host-mcp (G5-A09/A12)", () => {
     await dshRuntime.dispose();
   });
 
+  it("G9-A07: dispatches the opt-in ordarium_inspect tool with a sanitized view", async () => {
+    const { createMcpOrdarium } = await import("../src/index.js");
+    const ledger = new (await import("@ordarium/core")).MemoryLedger();
+    const runtime = new OrdariumRuntime({ ledger, allowVolatileLedger: true });
+    const echoInput = defineSchema(
+      {
+        type: "object",
+        properties: { value: { type: "string" } },
+        required: ["value"],
+        additionalProperties: false,
+      },
+      (value) => {
+        if (value === null || typeof value !== "object" || typeof (value as { value?: unknown }).value !== "string") {
+          throw new TypeError("expected { value: string }");
+        }
+        return value as { value: string };
+      },
+    );
+    const output = defineSchema({ type: "string" }, (value) => {
+      if (typeof value !== "string") throw new TypeError("expected string");
+      return value;
+    });
+    const action = defineAction({
+      name: "demo.echo",
+      version: "1",
+      description: "Echo",
+      input: echoInput,
+      output,
+      effect: effects.guarded(),
+      execute: (input) => input.value,
+    });
+
+    const unauthorized = createMcpOrdarium({ runtime, actions: [action as never] });
+    const listed = await unauthorized.handle({ jsonrpc: "2.0", id: 1, method: "tools/list" }) as {
+      result: { tools: { name: string }[] };
+    };
+    expect(listed.result.tools.some((tool) => tool.name === "ordarium_inspect")).toBe(false);
+
+    const authorized = createMcpOrdarium({
+      runtime,
+      actions: [action as never],
+      operations: {
+        authorization: { operator: "op-1", source: "mcp:operator", grantedAt: "2026-01-01T00:00:00.000Z" },
+      },
+    });
+    const listedAuthorized = await authorized.handle({ jsonrpc: "2.0", id: 2, method: "tools/list" }) as {
+      result: { tools: { name: string }[] };
+    };
+    expect(listedAuthorized.result.tools.some((tool) => tool.name === "ordarium_inspect")).toBe(true);
+
+    const answered = await authorized.handle({
+      jsonrpc: "2.0", id: 3, method: "tools/call",
+      params: { name: "demo.echo", arguments: { value: "hi" } },
+    }) as { result: { isError: boolean } };
+    expect(answered.result.isError).toBe(false);
+    const [record] = (await ledger.list()).records;
+
+    const inspected = await authorized.handle({
+      jsonrpc: "2.0", id: 4, method: "tools/call",
+      params: { name: "ordarium_inspect", arguments: { operationId: record!.operationId } },
+    }) as { result: { isError: boolean; content: { text: string }[] } };
+    expect(inspected.result.isError).toBe(false);
+    const payload = JSON.parse(inspected.result.content[0]!.text) as {
+      found: boolean;
+      view: Record<string, unknown>;
+    };
+    expect(payload.found).toBe(true);
+    expect(Object.keys(payload.view).sort()).toEqual([
+      "actionName", "actionVersion", "attempts", "effectKind",
+      "operationId", "state", "updatedAt",
+    ]);
+    await unauthorized.stop();
+    await authorized.stop();
+  });
+
   it("keeps the kernel free of MCP types (A10/A12)", async () => {
     const core = await import("@ordarium/core");
     expect(Object.keys(core).some((name) => /mcp/iu.test(name))).toBe(false);

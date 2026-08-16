@@ -88,6 +88,7 @@ export interface CreateOperationsOptions {
  * SQL filter and no second recovery engine.
  */
 export declare function createOperations(options?: CreateOperationsOptions): OrdariumOperations;
+export declare function assertOperatorAuthorization(authorization: OperatorAuthorization, required: "operations" | "operations:reconcile"): void;
 /** The model view is the same projector with a stricter field policy. */
 export declare function projectModelView(record: OperationRecord): ModelOperationView;
 //# sourceMappingURL=operations.d.ts.map

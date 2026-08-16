@@ -96,5 +96,6 @@ export interface DshOrdarium {
 }
 export declare function createDshOrdarium(options?: CreateDshOrdariumOptions): DshOrdarium;
 export declare function defaultDatabasePath(): string;
-export {};
+export { createOrdariumPlugin } from "./plugin.js";
+export type { OrdariumPluginOptions, OrdariumPluginOps, OrdariumDshPlugin } from "./plugin.js";
 //# sourceMappingURL=advanced.d.ts.map
