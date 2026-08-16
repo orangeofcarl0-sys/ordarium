@@ -42,6 +42,7 @@ import {
   idempotencyDeadlinePassed,
 } from "./recovery.js";
 import type { HostInvocation, HostInvocationPort } from "./host.js";
+import type { RecoveryMode } from "./recovery.js";
 import type {
   AuthorizationDecision,
   AuthorizationEvidenceKind,
@@ -288,6 +289,7 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
       logicalKeyDigest,
       inputDigest,
       runOptions,
+      "normal",
     );
     this.#inFlight.set(operationId, { inputDigest, operationId, controller, promise });
     try {
@@ -297,6 +299,59 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
         this.#inFlight.delete(operationId);
       }
     }
+  }
+
+  /**
+   * Query-only recovery entry (G3 spec §3): the same evaluator and claim
+   * machinery as a normal invocation, locked to reconcile-only mode. It can
+   * never dispatch - not even on authoritative absence - so the Provider
+   * execute spy stays at zero (G3-A11). G4's Operations wraps this method
+   * instead of growing a second recovery engine.
+   */
+  async reconcileOnly<I extends JsonValue, O extends JsonValue>(
+    action: Action<I, O>,
+    unknownInput: unknown,
+    options: ActionRunOptions = {},
+  ): Promise<O> {
+    if (this.#lifecycle === "closing" || this.#lifecycle === "closed") {
+      throw new RuntimeClosedError();
+    }
+    if (this.#lifecycle !== "accepting") {
+      throw new RuntimeQuiescingError();
+    }
+    const input = action.input.parse(unknownInput);
+    assertJsonValue(input, "action input");
+    const inputBytes = Buffer.byteLength(canonicalJson(input), "utf8");
+    if (inputBytes > RESOURCE_LIMITS.maxInputJsonBytes) {
+      throw new InputTooLargeError(RESOURCE_LIMITS.maxInputJsonBytes);
+    }
+    this.#assertLedgerEligibility(action);
+    const identity = options.identity ?? directIdentity(action);
+    assertInvocationIdentity(identity);
+    if (options.providerPrincipalRef !== undefined) {
+      assertProviderPrincipalRef(options.providerPrincipalRef);
+    }
+    const logicalKey = action.key?.(input, identity) ??
+      `${identity.source}\u0000${identity.scope}\u0000${identity.callId}`;
+    if (logicalKey.length === 0) throw new TypeError("Action logical key must not be empty");
+    const logicalKeyDigest = digestJson(logicalKey);
+    const operationId = `op_${digestJson({
+      action: action.name,
+      version: action.version,
+      logicalKeyDigest,
+    }).slice(0, 40)}`;
+    const inputDigest = digestJson(input);
+
+    return this.#runInternal(
+      action,
+      input,
+      identity,
+      operationId,
+      logicalKeyDigest,
+      inputDigest,
+      options,
+      "reconcile-only",
+    );
   }
 
   async invoke<I extends JsonValue, O extends JsonValue>(
@@ -315,6 +370,7 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
     logicalKeyDigest: string,
     inputDigest: string,
     options: ActionRunOptions,
+    mode: RecoveryMode,
   ): Promise<O> {
     const now = this.#now();
     const principalDigest = options.providerPrincipalRef === undefined
@@ -350,6 +406,13 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
       const terminal = this.#readTerminal(record, action);
       if (terminal.done) {
         return terminal.value;
+      }
+
+      if (mode === "reconcile-only" && (record.state === "proposed" || record.state === "authorized")) {
+        throw new OperationFailedError(
+          operationId,
+          "reconcile-only requires a dispatched or uncertain operation",
+        );
       }
 
       if (record.state === "proposed") {
@@ -406,10 +469,10 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
 
       if (record.state === "claimed") {
         const resumeFrom = record.claim?.resumeFrom ?? "uncertain";
-        if (resumeFrom === "authorized") {
+        if (mode === "normal" && resumeFrom === "authorized") {
           return this.#dispatchAndExecute(action, input, record, options.signal);
         }
-        return this.#recover(action, input, record, options.signal);
+        return this.#recover(action, input, record, options.signal, mode);
       }
 
       throw new OperationFailedError(operationId, `Unsupported operation state: ${record.state}`);
@@ -599,7 +662,8 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
     action: Action<I, O>,
     input: I,
     claimed: OperationRecord,
-    signal?: AbortSignal,
+    signal: AbortSignal | undefined,
+    mode: RecoveryMode,
   ): Promise<O> {
     const effectiveSignal = signal ?? new AbortController().signal;
     if (effectiveSignal.aborted) {
@@ -679,7 +743,7 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
       }
 
       if (outcome.status === "absent") {
-        const absence = evaluateAuthoritativeAbsence(claimed, outcome, "normal", this.#clock());
+        const absence = evaluateAuthoritativeAbsence(claimed, outcome, mode, this.#clock());
         if (absence.kind === "redispatch-same-key") {
           return this.#dispatchAndExecute(action, input, claimed, effectiveSignal);
         }
@@ -703,7 +767,7 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
       record: claimed,
       hasReconcile: false,
       operationKeyUsable: usesOperationKey(action.effect),
-      mode: "normal",
+      mode,
       now: this.#clock(),
     });
     if (decision.kind === "redispatch-same-key") {

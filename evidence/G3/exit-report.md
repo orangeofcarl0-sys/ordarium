@@ -8,7 +8,8 @@
 | Delta | 内容 |
 |---|---|
 | G3-001 | 生命周期状态机、`RUNTIME_QUIESCING`/`RUNTIME_CLOSED`、有界 drain + durable handoff + 迟到 callback 吸收、dsh dispose 切换（commit `6adee15`） |
-| G3-002/003 | 统一 `recovery.ts` evaluator（normal/reconcile-only）、`IDEMPOTENCY_EXPIRED` 执行期强制、时钟跳变/stall 夹具、checkpoint 矩阵、取消语义（本次提交） |
+| G3-002/003 | 统一 `recovery.ts` evaluator（normal/reconcile-only）、`IDEMPOTENCY_EXPIRED` 执行期强制、时钟跳变/stall 夹具、checkpoint 矩阵、取消语义（commit `584f4fa`） |
+| G3-004 | `runtime.reconcileOnly` 调用入口（A11 调用方级证明）+ dsh dispose 字面顺序（quiesce → unregister → drain） |
 
 ## 2. 验收矩阵（docs/17 §11.4）
 
@@ -24,7 +25,7 @@
 | A08 abort before dispatch | `core/test/cancellation.test.ts`（cancelled、Provider 0） |
 | A09 abort after dispatch | 同文件（结果未知 → uncertain；确定性完成保持 succeeded 的诚实语义） |
 | A10 quiesce | `core/test/lifecycle.test.ts` 5 项（`RUNTIME_QUIESCING`、有界 drain、handoff、迟到吸收、替代 runtime 恢复） |
-| A11 normal vs reconcile-only | `core/test/recovery.test.ts` evaluator 决策级证明（同证据 reconcile-only 永不产生 redispatch 决策）；Operations 调用方接线与 execute-spy 端到端在 G4 验收 |
+| A11 normal vs reconcile-only | `core/test/recovery.test.ts` evaluator 决策级证明 + `core/test/reconcile-only.test.ts` 调用方级证明（`runtime.reconcileOnly`：Provider execute spy 恒零、absent+retrySafe 保持 uncertain、never-dispatched fail closed） |
 
 ## 3. 快照 / 错误码演进
 
@@ -43,7 +44,7 @@
 ## 6. 最终命令与输出
 
 ```text
-pnpm check                → tsc -b 全绿；19 test files, 92 tests passed
+pnpm check                → tsc -b 全绿；20 test files, 96 tests passed
 pnpm verify:architecture  → passed；快照零未解释漂移
 ```
 

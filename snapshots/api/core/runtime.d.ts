@@ -62,6 +62,14 @@ export declare class OrdariumRuntime implements ActionRunner, HostInvocationPort
     }): Promise<void>;
     close(): Promise<void>;
     run<I extends JsonValue, O extends JsonValue>(action: Action<I, O>, unknownInput: unknown, options?: ActionRunOptions): Promise<O>;
+    /**
+     * Query-only recovery entry (G3 spec §3): the same evaluator and claim
+     * machinery as a normal invocation, locked to reconcile-only mode. It can
+     * never dispatch - not even on authoritative absence - so the Provider
+     * execute spy stays at zero (G3-A11). G4's Operations wraps this method
+     * instead of growing a second recovery engine.
+     */
+    reconcileOnly<I extends JsonValue, O extends JsonValue>(action: Action<I, O>, unknownInput: unknown, options?: ActionRunOptions): Promise<O>;
     invoke<I extends JsonValue, O extends JsonValue>(action: Action<I, O>, input: unknown, invocation: HostInvocation): Promise<O>;
 }
 export declare function operationIdentityPreview<I extends JsonValue, O extends JsonValue>(action: Action<I, O>, input: unknown, identity: InvocationIdentity): {
