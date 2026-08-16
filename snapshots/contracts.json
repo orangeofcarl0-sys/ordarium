@@ -1,0 +1,140 @@
+{
+  "goalRevision": "ORDARIUM-GOALS-3",
+  "frozenAt": "G0",
+  "packages": {
+    "@ordarium/core": {
+      "version": "0.2.0",
+      "workspaceDependencies": [],
+      "externalDependencies": [],
+      "exports": {
+        ".": {
+          "types": "./dist/src/index.d.ts",
+          "import": "./dist/src/index.js"
+        }
+      },
+      "private": true
+    },
+    "@ordarium/dsh": {
+      "version": "0.2.0",
+      "workspaceDependencies": [
+        "@ordarium/core",
+        "@ordarium/ledger-sqlite"
+      ],
+      "externalDependencies": [],
+      "exports": {
+        ".": {
+          "types": "./dist/src/index.d.ts",
+          "import": "./dist/src/index.js"
+        }
+      },
+      "private": true
+    },
+    "@ordarium/ledger-sqlite": {
+      "version": "0.2.0",
+      "workspaceDependencies": [
+        "@ordarium/core"
+      ],
+      "externalDependencies": [],
+      "exports": {
+        ".": {
+          "types": "./dist/src/index.d.ts",
+          "import": "./dist/src/index.js"
+        }
+      },
+      "private": true
+    },
+    "@ordarium/testing": {
+      "version": "0.2.0",
+      "workspaceDependencies": [
+        "@ordarium/core"
+      ],
+      "externalDependencies": [],
+      "exports": {
+        ".": {
+          "types": "./dist/src/index.d.ts",
+          "import": "./dist/src/index.js"
+        }
+      },
+      "private": true
+    }
+  },
+  "importScan": {
+    "@ordarium/core": {
+      "workspace": [],
+      "external": [],
+      "nodeBuiltins": [
+        "node:crypto"
+      ],
+      "relativeImportCount": 8
+    },
+    "@ordarium/dsh": {
+      "workspace": [
+        "@ordarium/core",
+        "@ordarium/ledger-sqlite"
+      ],
+      "external": [],
+      "nodeBuiltins": [
+        "node:os",
+        "node:path"
+      ],
+      "relativeImportCount": 0
+    },
+    "@ordarium/ledger-sqlite": {
+      "workspace": [
+        "@ordarium/core"
+      ],
+      "external": [],
+      "nodeBuiltins": [
+        "node:fs",
+        "node:path",
+        "node:sqlite"
+      ],
+      "relativeImportCount": 0
+    },
+    "@ordarium/testing": {
+      "workspace": [
+        "@ordarium/core"
+      ],
+      "external": [],
+      "nodeBuiltins": [],
+      "relativeImportCount": 0
+    }
+  },
+  "errorCodes": [
+    "ACTION_DENIED",
+    "ACTION_EXECUTION_FAILED",
+    "AUTHORIZATION_REQUIRED",
+    "IDENTITY_REQUIRED",
+    "OPERATION_BUSY",
+    "OPERATION_CANCELLED",
+    "OPERATION_CONFLICT",
+    "OPERATION_FAILED",
+    "OPERATION_UNCERTAIN",
+    "PERSISTED_VALUE_TOO_LARGE",
+    "SIMULATED_PROCESS_CRASH"
+  ],
+  "operationStates": [
+    "proposed",
+    "authorized",
+    "denied",
+    "claimed",
+    "dispatched",
+    "succeeded",
+    "failed",
+    "cancelled",
+    "uncertain",
+    "reconciled"
+  ],
+  "guaranteeLevels": [
+    "read-only",
+    "guarded",
+    "idempotent",
+    "reconcilable",
+    "unmanaged"
+  ],
+  "runtimeCheckpoints": [
+    "after-claim",
+    "after-dispatch",
+    "after-reconcile"
+  ]
+}
