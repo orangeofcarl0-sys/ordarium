@@ -19,6 +19,7 @@ const readmes = [
 ].filter(existsSync);
 const documents = [
   ...readmes,
+  ...readdirSync(join(ROOT, "docs")).map((name) => join(ROOT, "docs", name)),
   ...readdirSync(join(ROOT, "..", "docs")).map((name) => join(ROOT, "..", "docs", name)),
 ].filter((path) => path.endsWith(".md") && existsSync(path));
 
