@@ -36,13 +36,30 @@
 - 包体积：pack 输出五 tarball（core/ledger-sqlite/dsh/testing/host-mcp @1.0.0-rc.1），`test:package` 运行时打印；
 - SQLite 事务：create/CAS 单事务、renewLease 单 UPDATE（G2 设计 §2/§3 落实，A03 证明写放大消除）。
 
-## 4. 发布前剩余硬项（诚实披露，非静默跳过）
+## 4. 发布前剩余硬项（诚实披露；2026-08-17 更新见 §6）
 
 1. **真实 DSH 发布包接入**（A02/A08 的宿主终验）：环境无可安装 DSH 产物；`COMPAT-DSH-001` 剩余部分——接入后补官方类型/HMR fixture 即可闭环，Ordarium 侧合同零改动预期；
 2. **发布目的地决议**：registry（npm 公共 / 私有）、`repository` 字段与组织归属；
 3. `1.0.0-rc.1` → `1.0.0` 的正式发布动作本身。
 
-## 5. 最终命令与输出
+## 5. 发布流程进入（2026-08-17 补录）
+
+1. **工程分离**：Palimpsest 与 Ordarium 已完成仓内双根分离（commit `2cd5579`）——Python 线（运行时/测试/fixture/archive/pyproject）迁入 `palimpsest/`（101 测试在新位置全绿），Ordarium 规范迁入 `ordarium/docs/`，根 README 成为双项目索引。
+2. **版本升位**：五包 + workspace `1.0.0-rc.1` → **`1.0.0`**（正式线，G7 §1 决议的 rc→1.0.0 执行）；快照重生成（22 项）。
+3. **1.0.0 全门复跑**：`pnpm verify:release` 六门全 PASS（check 140 测试 / architecture / integration / conformance / docs 22 文档 / package 五 tarball）；Docker 矩阵双腿复跑（node:24.15.0-slim 与 node:24-bookworm 各 140 测试，双 `MATRIX_LEG_OK`）。
+4. **发布阻塞项**：`npm whoami` → `ENEEDAUTH`（本机未登录 registry）。`npm publish` 为外发动作，需所有者提供 registry 与凭据后执行：
+   ```powershell
+   Set-Location ordarium
+   npm login                      # 或配置 registry token
+   pnpm --filter @ordarium/core publish --access public --no-git-checks
+   pnpm --filter @ordarium/ledger-sqlite publish --access public --no-git-checks
+   pnpm --filter @ordarium/dsh publish --access public --no-git-checks
+   pnpm --filter @ordarium/testing publish --access public --no-git-checks
+   pnpm --filter @ordarium/host-mcp publish --access public --no-git-checks
+   ```
+   （顺序即依赖序；`pnpm publish` 会把 `workspace:*` 重写为已发布的 `1.0.0`。）
+
+## 6. 最终命令与输出
 
 ```text
 pnpm verify:release

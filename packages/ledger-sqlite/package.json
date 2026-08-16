@@ -1,6 +1,6 @@
 {
   "name": "@ordarium/ledger-sqlite",
-  "version": "1.0.0-rc.1",
+  "version": "1.0.0",
   "description": "Embedded durable SQLite operation ledger for Ordarium",
   "private": false,
   "type": "module",

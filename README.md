@@ -2,7 +2,7 @@
 
 Ordarium 是**多 agent harness 的公共基石**：一个轻量、可嵌入、host-neutral 的 **Safe Action SDK + Effect Authority**。它不运行 Agent、不组装 Prompt、不调度或编排 agent，也不替代任何宿主 harness；它只包住真正会产生副作用的 Action，使一次调用具备稳定身份、分类授权证据、持久状态、并发所有权和诚实的崩溃恢复语义。DSH 是首个宿主；发布前以真实第二宿主（`@ordarium/host-mcp`）与宿主 conformance harness 机器证明内核中立，多个 agent/进程/宿主可共享同一本地 ledger（共账拓扑）。
 
-> 当前发布线为 `1.0.0-rc.1`（release candidate，MIT；G0–G7 验收完成，见 `evidence/G7/release-candidate-report.md`）。本文描述的公开表面与实现一致：精选 root、schema v2、quiesce/drain 生命周期均已交付；rc 到 1.0.0 之间不再有计划的破坏性变更。
+> 当前发布线为 `1.0.0`（正式线，MIT；G0–G9 验收完成，见 `evidence/G7/release-candidate-report.md` 与 `evidence/G9/exit-report.md`）。本文描述的公开表面与实现一致：精选 root、schema v2、quiesce/drain 生命周期与官方插件壳均已交付。
 
 ## 为什么安装
 
@@ -115,6 +115,6 @@ pnpm verify:architecture
 
 `pnpm verify:architecture`（G0 起生效）机器校验包依赖图与禁止边、public API 快照、错误码/状态 union、SQLite schema 基线与 Compatibility Register。任何漂移必须先在 `evidence/` 附 Architecture Delta Sheet，再用 `pnpm snapshots:update` 重新生成快照并一起提交。
 
-五包发布线为 `1.0.0-rc.1`（release candidate；MIT）。engines 分层：ledger-sqlite / dsh / host-mcp 为 Node.js `>=24.15.0`，core / testing 为 `>=24.0.0`；Docker 矩阵（24.15.0 下限 + 当前 24.x）已在 `evidence/G7/node-matrix-report.md` 闭环，可用 `pnpm verify:matrix` 复跑。
+五包发布线为 `1.0.0`（正式线；MIT）。engines 分层：ledger-sqlite / dsh / host-mcp 为 Node.js `>=24.15.0`，core / testing 为 `>=24.0.0`；Docker 矩阵（24.15.0 下限 + 当前 24.x）已在 `evidence/G7/node-matrix-report.md` 闭环，可用 `pnpm verify:matrix` 复跑。
 
 完整合同、实施状态、架构与阶段验收见 [`docs/12-ordarium-product-baseline.md`](docs/12-ordarium-product-baseline.md)、[`docs/13-ordarium-action-contract.md`](docs/13-ordarium-action-contract.md)、[`docs/14-ordarium-implementation-plan.md`](docs/14-ordarium-implementation-plan.md)、[`docs/15-ordarium-complete-architecture.md`](docs/15-ordarium-complete-architecture.md)、[`docs/16-ordarium-mermaid-architecture-atlas.md`](docs/16-ordarium-mermaid-architecture-atlas.md) 与 [`docs/17-ordarium-goals-and-acceptance.md`](docs/17-ordarium-goals-and-acceptance.md)。

@@ -1,6 +1,6 @@
 {
   "name": "@ordarium/dsh",
-  "version": "1.0.0-rc.1",
+  "version": "1.0.0",
   "description": "One-install DSH adapter for Ordarium Safe Actions",
   "private": false,
   "type": "module",
