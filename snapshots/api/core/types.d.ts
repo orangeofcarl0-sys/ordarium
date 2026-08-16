@@ -9,8 +9,10 @@ export interface InvocationIdentity {
     actor?: string | undefined;
     lineage?: string[] | undefined;
 }
+export type AuthorizationEvidenceKind = "host-admission" | "policy-decision" | "human-approval";
 export interface AuthorizationDecision {
     decision: "allow" | "deny";
+    kind: AuthorizationEvidenceKind;
     source: string;
     reason?: string | undefined;
 }

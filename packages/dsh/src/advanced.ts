@@ -113,6 +113,7 @@ export function asDshTool<I extends JsonValue, O extends JsonValue>(
       const authorization = action.effect.requiresAuthorization
         ? await (options.authorize?.({ action, input, context }) ?? {
             decision: "allow",
+            kind: "host-admission",
             source: "dsh:tool-body-admitted",
             reason: "DSH admitted the tool body; this is not evidence of explicit human approval",
           })

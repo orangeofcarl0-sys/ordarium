@@ -23,7 +23,7 @@ function guardedAction(name: string, executions: { count: number }) {
   });
 }
 
-const allow = { decision: "allow", source: "harness:policy" } as const;
+const allow = { decision: "allow", kind: "policy-decision", source: "harness:policy" } as const;
 
 describe("HostAdapterHarness", () => {
   it("converges a replayed host call onto one operation", async () => {

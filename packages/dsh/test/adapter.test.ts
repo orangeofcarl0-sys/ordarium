@@ -78,6 +78,7 @@ describe("DSH adapter", () => {
     const [record] = await runtime.ledger.list();
     expect(record?.authorization).toMatchObject({
       decision: "allow",
+      kind: "host-admission",
       source: "dsh:tool-body-admitted",
     });
   });

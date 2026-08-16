@@ -16,6 +16,16 @@ export class AuthorizationRequiredError extends OrdariumError {
   }
 }
 
+export class AuthorizationConflictError extends OrdariumError {
+  constructor(operationId: string) {
+    super(
+      "AUTHORIZATION_CONFLICT",
+      "The operation already holds a durable authorization decision; contradictory evidence was rejected",
+      operationId,
+    );
+  }
+}
+
 export class IdentityRequiredError extends OrdariumError {
   constructor() {
     super(

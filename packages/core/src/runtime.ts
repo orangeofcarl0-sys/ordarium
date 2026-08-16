@@ -9,6 +9,7 @@ import type {
 } from "./action.js";
 import {
   ActionDeniedError,
+  AuthorizationConflictError,
   AuthorizationRequiredError,
   IdentityRequiredError,
   OperationBusyError,
@@ -24,6 +25,7 @@ import { MemoryLedger } from "./ledger.js";
 import type { HostInvocation, HostInvocationPort } from "./host.js";
 import type {
   AuthorizationDecision,
+  AuthorizationEvidenceKind,
   InvocationIdentity,
   OperationLedger,
   OperationRecord,
@@ -181,6 +183,7 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
     });
     let record = created.record;
     this.#assertCompatible(record, action, inputDigest, logicalKeyDigest);
+    this.#assertAuthorizationConsistent(record, options);
 
     while (true) {
       const terminal = this.#readTerminal(record, action);
@@ -275,7 +278,11 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
       return options.authorization;
     }
     if (!action.effect.requiresAuthorization) {
-      return { decision: "allow", source: `implicit:${action.effect.guarantee}` };
+      return {
+        decision: "allow",
+        kind: "host-admission",
+        source: `implicit:${action.effect.guarantee}`,
+      };
     }
     if (this.#authorizer === undefined) {
       throw new AuthorizationRequiredError(operationId);
@@ -638,6 +645,16 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
     }
   }
 
+  #assertAuthorizationConsistent(record: OperationRecord, options: ActionRunOptions): void {
+    const incoming = options.authorization;
+    if (incoming === undefined) return;
+    assertAuthorizationDecision(incoming);
+    const persisted = record.authorization;
+    if (persisted !== undefined && persisted.decision !== incoming.decision) {
+      throw new AuthorizationConflictError(record.operationId);
+    }
+  }
+
   async #markUncertain(
     record: OperationRecord,
     reason: string,
@@ -752,15 +769,29 @@ function assertInvocationIdentity(identity: InvocationIdentity): void {
   }
 }
 
+const AUTHORIZATION_EVIDENCE_KINDS = new Set<AuthorizationEvidenceKind>([
+  "host-admission",
+  "policy-decision",
+  "human-approval",
+]);
+
 function assertAuthorizationDecision(decision: AuthorizationDecision): void {
   if (decision.decision !== "allow" && decision.decision !== "deny") {
     throw new TypeError("Authorization decision must be allow or deny");
+  }
+  if (
+    typeof decision.kind !== "string" ||
+    !AUTHORIZATION_EVIDENCE_KINDS.has(decision.kind as AuthorizationEvidenceKind)
+  ) {
+    throw new TypeError(
+      "Authorization evidence kind must be host-admission, policy-decision or human-approval",
+    );
   }
   if (typeof decision.source !== "string" || decision.source.length === 0) {
     throw new TypeError("Authorization decision source must be a non-empty string");
   }
   if (decision.reason !== undefined &&
-      (typeof decision.reason !== "string" || decision.reason.length > 4_096)) {
+    (typeof decision.reason !== "string" || decision.reason.length > 4_096)) {
     throw new TypeError("Authorization decision reason must be a string of at most 4096 characters");
   }
 }

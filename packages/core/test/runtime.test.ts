@@ -207,7 +207,7 @@ describe("OrdariumRuntime", () => {
     const runtime = new OrdariumRuntime();
     const options = {
       identity,
-      authorization: { decision: "allow" as const, source: "test" },
+      authorization: { decision: "allow" as const, kind: "policy-decision" as const, source: "test" },
     };
 
     await expect(action.run(runtime, { value: "x" }, options))
@@ -242,7 +242,7 @@ describe("OrdariumRuntime", () => {
     const runtime = new OrdariumRuntime();
     const options = {
       identity,
-      authorization: { decision: "allow" as const, source: "test" },
+      authorization: { decision: "allow" as const, kind: "policy-decision" as const, source: "test" },
     };
 
     await expect(action.run(runtime, { value: "once" }, options))
@@ -278,7 +278,7 @@ describe("OrdariumRuntime", () => {
     const runtime = new OrdariumRuntime();
     const options = {
       identity,
-      authorization: { decision: "allow" as const, source: "test" },
+      authorization: { decision: "allow" as const, kind: "policy-decision" as const, source: "test" },
     };
 
     await expect(action.run(runtime, { value: "done" }, options))

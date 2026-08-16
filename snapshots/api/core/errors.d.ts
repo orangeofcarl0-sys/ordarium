@@ -6,6 +6,9 @@ export declare class OrdariumError extends Error {
 export declare class AuthorizationRequiredError extends OrdariumError {
     constructor(operationId: string);
 }
+export declare class AuthorizationConflictError extends OrdariumError {
+    constructor(operationId: string);
+}
 export declare class IdentityRequiredError extends OrdariumError {
     constructor();
 }

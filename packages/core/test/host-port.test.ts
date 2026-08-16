@@ -83,7 +83,7 @@ describe("HostInvocationPort", () => {
     const port: HostInvocationPort = runtime;
     const invocation = {
       identity: { source: "test", scope: "host-port", callId: "call-1" },
-      authorization: { decision: "allow", source: "test:policy" },
+      authorization: { decision: "allow", kind: "policy-decision", source: "test:policy" },
     } satisfies HostInvocation;
 
     await expect(port.invoke(action, "work", invocation)).resolves.toBe("done:work");
