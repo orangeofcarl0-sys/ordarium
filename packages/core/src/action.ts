@@ -1,5 +1,5 @@
 import type { EffectProfile, IdempotencyWindow } from "./effects.js";
-import type { ActionSchema, JsonValue } from "./json.js";
+import { digestJson, type ActionSchema, type JsonValue } from "./json.js";
 import type {
   AuthorizationDecision,
   InvocationIdentity,
@@ -58,6 +58,40 @@ export interface Action<I extends JsonValue, O extends JsonValue> {
 }
 
 export type ActionDefinition<I extends JsonValue, O extends JsonValue> = Omit<Action<I, O>, "run">;
+
+/**
+ * Deterministic digest of the action's contract metadata: name, version,
+ * input/output JSON Schemas, effect profile and the presence of the optional
+ * hooks. It detects unintended drift under an unchanged name+version
+ * (G1-A04); it never replaces the author's version responsibility and never
+ * hashes function source code (docs/17 §9.2.3).
+ */
+export function contractFingerprint<I extends JsonValue, O extends JsonValue>(
+  action: Action<I, O>,
+): string {
+  const effect: JsonValue = action.effect.kind === "reconcilable"
+    ? {
+        kind: action.effect.kind,
+        cancellable: action.effect.cancellable,
+        ...(action.effect.idempotencyWindow === undefined
+          ? {}
+          : { idempotencyWindow: action.effect.idempotencyWindow }),
+      }
+    : action.effect;
+  return digestJson({
+    name: action.name,
+    version: action.version,
+    input: action.input.jsonSchema,
+    output: action.output.jsonSchema,
+    effect,
+    hooks: {
+      key: action.key !== undefined,
+      reconcile: action.reconcile !== undefined,
+      cancel: action.cancel !== undefined,
+      receipt: action.receipt !== undefined,
+    },
+  });
+}
 
 export function defineAction<I extends JsonValue, O extends JsonValue>(
   definition: ActionDefinition<I, O>,

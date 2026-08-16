@@ -7,10 +7,12 @@ import type {
   ActionRunner,
   ReconcileResult,
 } from "./action.js";
+import { contractFingerprint } from "./action.js";
 import {
   ActionDeniedError,
   AuthorizationConflictError,
   AuthorizationRequiredError,
+  ContractDriftError,
   IdentityRequiredError,
   InputTooLargeError,
   LedgerCapabilityRequiredError,
@@ -225,11 +227,13 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
       lastFencingToken: 0,
       createdAt: now,
       updatedAt: now,
+      contractFingerprint: contractFingerprint(action),
       ...(principalDigest === undefined ? {} : { providerPrincipalDigest: principalDigest }),
     });
     let record = created.record;
     this.#assertCompatible(record, action, inputDigest, logicalKeyDigest);
     this.#assertAuthorizationConsistent(record, options);
+    record = await this.#applyContractBinding(record, action);
     record = await this.#applyPrincipalBinding(record, options);
 
     while (true) {
@@ -736,6 +740,29 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
     if (persisted !== undefined && persisted.decision !== incoming.decision) {
       throw new AuthorizationConflictError(record.operationId);
     }
+  }
+
+  /**
+   * Contract drift detection (G1-A04): the first durable fingerprint binds
+   * the operation; re-entering the same name+version with drifted schema,
+   * effect or hook metadata fails closed with CONTRACT_DRIFT instead of
+   * silently reinterpreting persisted state. The fingerprint is a diagnostic
+   * - the author's version bump remains the semantic boundary.
+   */
+  async #applyContractBinding<I extends JsonValue, O extends JsonValue>(
+    record: OperationRecord,
+    action: Action<I, O>,
+  ): Promise<OperationRecord> {
+    const fingerprint = contractFingerprint(action);
+    if (record.contractFingerprint === undefined) {
+      const bound = await this.#update(record, { contractFingerprint: fingerprint });
+      if (bound !== undefined) return bound;
+      return this.#applyContractBinding(await this.#reload(record.operationId), action);
+    }
+    if (record.contractFingerprint !== fingerprint) {
+      throw new ContractDriftError(record.operationId);
+    }
+    return record;
   }
 
   /**

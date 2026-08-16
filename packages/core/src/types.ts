@@ -87,6 +87,7 @@ export interface OperationRecord {
   updatedAt: string;
   authorization?: AuthorizationRecord | undefined;
   providerPrincipalDigest?: string | undefined;
+  contractFingerprint?: string | undefined;
   claim?: OperationClaim | undefined;
   resumeFrom?: "authorized" | "dispatched" | "uncertain" | undefined;
   result?: JsonValue | undefined;

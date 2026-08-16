@@ -36,6 +36,16 @@ export class PrincipalConflictError extends OrdariumError {
   }
 }
 
+export class ContractDriftError extends OrdariumError {
+  constructor(operationId: string) {
+    super(
+      "CONTRACT_DRIFT",
+      "The action contract metadata drifted from its durable fingerprint under the same name and version; bump the action version instead",
+      operationId,
+    );
+  }
+}
+
 export class IdentityRequiredError extends OrdariumError {
   constructor() {
     super(

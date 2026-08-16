@@ -231,6 +231,10 @@ export function decodeOperationRecord(value: unknown): OperationRecord {
     (typeof value.providerPrincipalDigest !== "string" || !HEX_64.test(value.providerPrincipalDigest))) {
     throw new TypeError("Operation record providerPrincipalDigest must be a lowercase 64-hex digest");
   }
+  if (value.contractFingerprint !== undefined &&
+    (typeof value.contractFingerprint !== "string" || !HEX_64.test(value.contractFingerprint))) {
+    throw new TypeError("Operation record contractFingerprint must be a lowercase 64-hex digest");
+  }
 
   const claim = value.claim;
   if (claim !== undefined) {
@@ -277,6 +281,9 @@ export function decodeOperationRecord(value: unknown): OperationRecord {
     ...(value.providerPrincipalDigest === undefined
       ? {}
       : { providerPrincipalDigest: value.providerPrincipalDigest as string }),
+    ...(value.contractFingerprint === undefined
+      ? {}
+      : { contractFingerprint: value.contractFingerprint as string }),
     ...(claim === undefined ? {} : { claim: decodeClaim(claim) }),
     ...(value.resumeFrom === undefined ? {} : { resumeFrom: value.resumeFrom as OperationRecord["resumeFrom"] }),
     result: optionalJsonValue(value, "result"),

@@ -1,5 +1,5 @@
 import type { EffectProfile } from "./effects.js";
-import type { ActionSchema, JsonValue } from "./json.js";
+import { type ActionSchema, type JsonValue } from "./json.js";
 import type { AuthorizationDecision, InvocationIdentity, ProviderPrincipalRef, SafeError } from "./types.js";
 export interface ActionExecutionContext {
     operationId: string;
@@ -51,5 +51,13 @@ export interface Action<I extends JsonValue, O extends JsonValue> {
     run(runtime: ActionRunner, input: unknown, options?: ActionRunOptions): Promise<O>;
 }
 export type ActionDefinition<I extends JsonValue, O extends JsonValue> = Omit<Action<I, O>, "run">;
+/**
+ * Deterministic digest of the action's contract metadata: name, version,
+ * input/output JSON Schemas, effect profile and the presence of the optional
+ * hooks. It detects unintended drift under an unchanged name+version
+ * (G1-A04); it never replaces the author's version responsibility and never
+ * hashes function source code (docs/17 §9.2.3).
+ */
+export declare function contractFingerprint<I extends JsonValue, O extends JsonValue>(action: Action<I, O>): string;
 export declare function defineAction<I extends JsonValue, O extends JsonValue>(definition: ActionDefinition<I, O>): Action<I, O>;
 //# sourceMappingURL=action.d.ts.map
