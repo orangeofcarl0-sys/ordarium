@@ -40,13 +40,29 @@ export interface OrdariumRuntimeOptions {
      */
     allowVolatileLedger?: boolean | undefined;
 }
+export type RuntimeLifecycleState = "accepting" | "quiescing" | "draining" | "closing" | "closed";
 export declare class OrdariumRuntime implements ActionRunner, HostInvocationPort {
     #private;
     readonly ledger: OperationLedger;
     constructor(options?: OrdariumRuntimeOptions);
+    /** Current lifecycle position (G3 spec §1); transitions are monotonic. */
+    get lifecycle(): RuntimeLifecycleState;
+    /**
+     * Stop accepting new invocations. New runs fail closed with
+     * RUNTIME_QUIESCING; in-flight work is untouched until dispose().
+     */
+    quiesce(): Promise<void>;
+    /**
+     * The one disposal path (G3 spec §2): quiesce -> bounded drain -> abort
+     * remaining -> durable handoff -> absorb late callbacks -> close ledger.
+     * The old unregister-then-close shortcut no longer exists.
+     */
+    dispose(options?: {
+        drainMs?: number | undefined;
+    }): Promise<void>;
+    close(): Promise<void>;
     run<I extends JsonValue, O extends JsonValue>(action: Action<I, O>, unknownInput: unknown, options?: ActionRunOptions): Promise<O>;
     invoke<I extends JsonValue, O extends JsonValue>(action: Action<I, O>, input: unknown, invocation: HostInvocation): Promise<O>;
-    close(): Promise<void>;
 }
 export declare function operationIdentityPreview<I extends JsonValue, O extends JsonValue>(action: Action<I, O>, input: unknown, identity: InvocationIdentity): {
     operationId: string;

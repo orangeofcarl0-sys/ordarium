@@ -21,6 +21,12 @@ export declare class IdentityRequiredError extends OrdariumError {
 export declare class LedgerCapabilityRequiredError extends OrdariumError {
     constructor(requirement: string);
 }
+export declare class RuntimeQuiescingError extends OrdariumError {
+    constructor();
+}
+export declare class RuntimeClosedError extends OrdariumError {
+    constructor();
+}
 export declare class ActionDeniedError extends OrdariumError {
     constructor(operationId: string);
 }

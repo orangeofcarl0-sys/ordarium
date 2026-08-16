@@ -22,6 +22,8 @@ import {
   OperationFailedError,
   PersistedValueTooLargeError,
   PrincipalConflictError,
+  RuntimeClosedError,
+  RuntimeQuiescingError,
   SimulatedProcessCrash,
   UncertainOperationError,
 } from "./errors.js";
@@ -98,8 +100,17 @@ export interface OrdariumRuntimeOptions {
 
 interface InFlight {
   inputDigest: string;
+  operationId: string;
+  controller: AbortController;
   promise: Promise<unknown>;
 }
+
+export type RuntimeLifecycleState =
+  | "accepting"
+  | "quiescing"
+  | "draining"
+  | "closing"
+  | "closed";
 
 type LeaseWorkResult<T> =
   | { status: "fulfilled"; value: T; leaseLost: boolean }
@@ -116,6 +127,7 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
   readonly #deploymentCoordination: LedgerCoordination;
   readonly #allowVolatileLedger: boolean;
   readonly #inFlight = new Map<string, InFlight>();
+  #lifecycle: RuntimeLifecycleState = "accepting";
 
   constructor(options: OrdariumRuntimeOptions = {}) {
     this.#clock = options.clock ?? (() => new Date());
@@ -132,11 +144,101 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
     }
   }
 
+  /** Current lifecycle position (G3 spec §1); transitions are monotonic. */
+  get lifecycle(): RuntimeLifecycleState {
+    return this.#lifecycle;
+  }
+
+  /**
+   * Stop accepting new invocations. New runs fail closed with
+   * RUNTIME_QUIESCING; in-flight work is untouched until dispose().
+   */
+  async quiesce(): Promise<void> {
+    if (this.#lifecycle === "accepting") {
+      this.#lifecycle = "quiescing";
+    }
+  }
+
+  /**
+   * The one disposal path (G3 spec §2): quiesce -> bounded drain -> abort
+   * remaining -> durable handoff -> absorb late callbacks -> close ledger.
+   * The old unregister-then-close shortcut no longer exists.
+   */
+  async dispose(options: { drainMs?: number | undefined } = {}): Promise<void> {
+    await this.quiesce();
+    if (this.#lifecycle === "closed") return;
+
+    this.#lifecycle = "draining";
+    const drainMs = Math.max(0, options.drainMs ?? this.#leaseMs);
+    await this.#settleInFlight(drainMs);
+
+    for (const entry of [...this.#inFlight.values()]) {
+      entry.controller.abort(new Error("Ordarium runtime disposal aborted remaining work"));
+    }
+    await this.#settleInFlight(Math.min(drainMs, 250));
+    for (const entry of [...this.#inFlight.values()]) {
+      await this.#handoff(entry);
+      // Absorb late callbacks: a hung action that eventually settles after
+      // close must not surface as an unhandled rejection.
+      void entry.promise.catch(() => undefined);
+    }
+
+    this.#lifecycle = "closing";
+    await this.ledger.close?.();
+    this.#lifecycle = "closed";
+  }
+
+  async close(): Promise<void> {
+    await this.dispose();
+  }
+
+  async #settleInFlight(timeoutMs: number): Promise<void> {
+    const pending = [...this.#inFlight.values()].map((entry) => entry.promise);
+    if (pending.length === 0) return;
+    await Promise.race([
+      Promise.allSettled(pending),
+      new Promise((resolve) => {
+        const timer = setTimeout(resolve, timeoutMs);
+        timer.unref?.();
+      }),
+    ]);
+  }
+
+  /**
+   * Durable handoff for work still in flight at the drain deadline: writes
+   * the honest recoverable state without waiting for the hung action -
+   * cancelled before any dispatch, uncertain after a possible dispatch.
+   * A concurrent terminal write wins and the handoff becomes a no-op.
+   */
+  async #handoff(entry: InFlight): Promise<void> {
+    if (!this.#inFlight.has(entry.operationId)) return;
+    try {
+      const record = await this.ledger.get(entry.operationId);
+      if (record === undefined) return;
+      if (record.state === "proposed" || record.state === "authorized") {
+        await this.#update(record, { state: "cancelled", claim: undefined });
+        return;
+      }
+      if (record.state === "claimed" || record.state === "dispatched") {
+        await this.#markUncertain(record, "runtime-dispose-handoff");
+      }
+    } catch {
+      // The ledger may already be closing or the action raced a terminal
+      // write; either way the durable record decides the truth.
+    }
+  }
+
   async run<I extends JsonValue, O extends JsonValue>(
     action: Action<I, O>,
     unknownInput: unknown,
     options: ActionRunOptions = {},
   ): Promise<O> {
+    if (this.#lifecycle === "closing" || this.#lifecycle === "closed") {
+      throw new RuntimeClosedError();
+    }
+    if (this.#lifecycle !== "accepting") {
+      throw new RuntimeQuiescingError();
+    }
     const input = action.input.parse(unknownInput);
     assertJsonValue(input, "action input");
     const inputBytes = Buffer.byteLength(canonicalJson(input), "utf8");
@@ -168,6 +270,10 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
       return action.output.parse(await active.promise);
     }
 
+    const controller = new AbortController();
+    const runOptions: ActionRunOptions = options.signal === undefined
+      ? { ...options, signal: controller.signal }
+      : { ...options, signal: AbortSignal.any([options.signal, controller.signal]) };
     const promise = this.#runInternal(
       action,
       input,
@@ -175,9 +281,9 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
       operationId,
       logicalKeyDigest,
       inputDigest,
-      options,
+      runOptions,
     );
-    this.#inFlight.set(operationId, { inputDigest, promise });
+    this.#inFlight.set(operationId, { inputDigest, operationId, controller, promise });
     try {
       return action.output.parse(await promise);
     } finally {
@@ -193,10 +299,6 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
     invocation: HostInvocation,
   ): Promise<O> {
     return this.run(action, input, invocation);
-  }
-
-  async close(): Promise<void> {
-    await this.ledger.close?.();
   }
 
   async #runInternal<I extends JsonValue, O extends JsonValue>(

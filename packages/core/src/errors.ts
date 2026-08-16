@@ -64,6 +64,21 @@ export class LedgerCapabilityRequiredError extends OrdariumError {
   }
 }
 
+export class RuntimeQuiescingError extends OrdariumError {
+  constructor() {
+    super(
+      "RUNTIME_QUIESCING",
+      "The runtime has stopped accepting new invocations; a replacement instance must handle new intent",
+    );
+  }
+}
+
+export class RuntimeClosedError extends OrdariumError {
+  constructor() {
+    super("RUNTIME_CLOSED", "The runtime and its ledger are closed");
+  }
+}
+
 export class ActionDeniedError extends OrdariumError {
   constructor(operationId: string) {
     super("ACTION_DENIED", "The action was denied", operationId);
