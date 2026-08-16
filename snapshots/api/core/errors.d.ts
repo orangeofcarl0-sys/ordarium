@@ -12,6 +12,9 @@ export declare class AuthorizationConflictError extends OrdariumError {
 export declare class PrincipalConflictError extends OrdariumError {
     constructor(operationId: string);
 }
+export declare class OperatorAuthorizationRequiredError extends OrdariumError {
+    constructor();
+}
 export declare class ContractDriftError extends OrdariumError {
     constructor(operationId: string);
 }

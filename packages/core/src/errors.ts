@@ -36,6 +36,15 @@ export class PrincipalConflictError extends OrdariumError {
   }
 }
 
+export class OperatorAuthorizationRequiredError extends OrdariumError {
+  constructor() {
+    super(
+      "OPERATOR_AUTHORIZATION_REQUIRED",
+      "This operations call requires a valid host-injected OperatorAuthorization; tool input cannot grant it",
+    );
+  }
+}
+
 export class ContractDriftError extends OrdariumError {
   constructor(operationId: string) {
     super(

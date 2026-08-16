@@ -402,6 +402,7 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
     record = await this.#applyContractBinding(record, action);
     record = await this.#applyPrincipalBinding(record, options);
 
+    let claimRetries = 0;
     while (true) {
       const terminal = this.#readTerminal(record, action);
       if (terminal.done) {
@@ -447,6 +448,8 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
         }
         const claimed = await this.#claim(record, "authorized");
         if (claimed === undefined) {
+          claimRetries += 1;
+          if (claimRetries > 10) throw new OperationBusyError(operationId);
           record = await this.#reload(operationId);
           continue;
         }
@@ -459,6 +462,8 @@ export class OrdariumRuntime implements ActionRunner, HostInvocationPort {
         const recoveryState = record.state;
         const claimed = await this.#claim(record, recoveryState);
         if (claimed === undefined) {
+          claimRetries += 1;
+          if (claimRetries > 10) throw new OperationBusyError(operationId);
           record = await this.#reload(operationId);
           continue;
         }
