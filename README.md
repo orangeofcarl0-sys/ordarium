@@ -107,19 +107,25 @@ Ledger 不保存 raw input、raw business key、credential、任意 stack 或未
 
 ## 安装（GitHub 分发）
 
-分发渠道为 GitHub（DSH 插件生态惯例；见 `evidence/G7/release-candidate-report.md` §5 的分发决议）。消费方经 pnpm git 依赖安装——`#path=` 指向本仓库内的包子目录，`#<tag>` 锁定版本锚（首个版本锚：`ordarium-v1.0.0`）：
+分发渠道为 GitHub（DSH 插件生态惯例；分发决议见 `evidence/G7/release-candidate-report.md` §5）。本工程已拆分为独立仓库（https://github.com/orangeofcarl0-sys/ordarium），五包位于 `packages/`，版本锚为 git tag（首个 `ordarium-v1.0.0`）与同名 GitHub Release。两种消费方式：
+
+**方式一：同 workspace 开发（推荐起步；Palimpsest 复兴插件即此路径）**
 
 ```bash
-# 普通 DSH 插件作者（唯一推荐入口）
-pnpm add github:<owner>/<repo>#ordarium-v1.0.0#path=ordarium/packages/dsh
-
-# 需要默认 durable ledger / 第二宿主 / 测试夹具时按需追加
-pnpm add github:<owner>/<repo>#ordarium-v1.0.0#path=ordarium/packages/ledger-sqlite
-pnpm add github:<owner>/<repo>#ordarium-v1.0.0#path=ordarium/packages/host-mcp
-pnpm add -D github:<owner>/<repo>#ordarium-v1.0.0#path=ordarium/packages/testing
+git clone https://github.com/orangeofcarl0-sys/ordarium.git
+cd ordarium && pnpm install && pnpm run build
+# 你的插件工程依赖本 workspace（pnpm workspace 链接或 path 协议引入）
 ```
 
-`<owner>/<repo>` 以仓库实际推送地址为准。五包已通过 tarball 消费验证（`pnpm test:package`），git 依赖走同一 dist 产物路径。
+**方式二：GitHub Release 五 tarball 一次安装**（五包互相依赖自洽性即 `pnpm test:package` 验证的内容）
+
+```bash
+pnpm add <release-assets>/ordarium-{core,ledger-sqlite,dsh,testing,host-mcp}-1.0.0.tgz
+```
+
+私有期下载 Release 资产需带 token；转公开后 URL（`https://github.com/orangeofcarl0-sys/ordarium/releases/download/ordarium-v1.0.0/<name>.tgz`）直接可用。
+
+> 已知限制（如实记录）：`pnpm add github:...#path=packages/dsh` 式单包 git 依赖暂不可用——包间 `workspace:*` 依赖在 git 安装语境无法解析；多包消费走上述两种方式。公共 npm 发布仍是未来第三选项（触发条件见 G7 报告）。
 
 ## 开发验证与 Node 政策
 

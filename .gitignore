@@ -1,0 +1,6 @@
+node_modules/
+dist/
+*.tsbuildinfo
+release/
+.zcode/
+.pnpm-store/

@@ -20,7 +20,9 @@ const readmes = [
 const documents = [
   ...readmes,
   ...readdirSync(join(ROOT, "docs")).map((name) => join(ROOT, "docs", name)),
-  ...readdirSync(join(ROOT, "..", "docs")).map((name) => join(ROOT, "..", "docs", name)),
+  ...(existsSync(join(ROOT, "..", "docs"))
+    ? readdirSync(join(ROOT, "..", "docs")).map((name) => join(ROOT, "..", "docs", name))
+    : []),
 ].filter((path) => path.endsWith(".md") && existsSync(path));
 
 const banned = /exactly[- ]once|tamper[- ]proof|tamper[- ]evident|strong sandbox|complete harness/giu;
@@ -49,6 +51,7 @@ for (const document of documents) {
   }
 
   for (const match of text.matchAll(/\]\(([^)#\s]+\.md)/gu)) {
+    if (/^https?:/u.test(match[1])) continue;
     const target = join(dirname(document), match[1]);
     if (!existsSync(target)) {
       failures.push(`${relative}: broken markdown link -> ${match[1]}`);

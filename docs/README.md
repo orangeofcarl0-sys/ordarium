@@ -1,6 +1,6 @@
 # Ordarium 文档索引与工程边界
 
-Ordarium 的完整规范、合同与证据链分布如下；本文是 Ordarium 侧的导航入口。Palimpsest 线的规范在仓库根 [`../../docs/00–11`](../../docs/)，两线边界见根 [`README.md`](../../README.md)。
+Ordarium 的完整规范、合同与证据链分布如下；本文是 Ordarium 侧的导航入口。Palimpsest 线的规范在仓库根 [Palimpsest 规范 00–11](https://github.com/orangeofcarl0-sys/palimpsest/tree/main/docs)，两线边界见根 [Palimpsest 仓库](https://github.com/orangeofcarl0-sys/palimpsest)。
 
 | 文档 | 作用 | 地位 |
 |---|---|---|
