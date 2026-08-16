@@ -216,6 +216,53 @@ for (const [name, directory] of Object.entries(discovered)) {
   }
 }
 
+// Curated dsh root façade (G1-A08 / COMPAT-API-002): the root entry may only
+// re-export the author golden path; everything else lives in /advanced.
+{
+  const dshExports = graph["@ordarium/dsh"]?.exports ?? {};
+  if (!("." in dshExports) || !("./advanced" in dshExports)) {
+    fail("@ordarium/dsh must expose exactly the curated root and /advanced subpath exports");
+  }
+  const rootSource = readFileSync(join(discovered["@ordarium/dsh"], "src", "index.ts"), "utf8");
+  const rootSymbols = new Set();
+  for (const match of rootSource.matchAll(/export\s+(?:type\s+)?\{([^}]+)\}\s*from/gu)) {
+    for (const name of match[1].split(",")) {
+      const trimmed = name.trim();
+      if (trimmed.length > 0) rootSymbols.add(trimmed);
+    }
+  }
+  const allowedRootSymbols = new Set([
+    "defineAction",
+    "defineSchema",
+    "effects",
+    "installOrdarium",
+    "jsonValueSchema",
+    "schema",
+    "Action",
+    "ActionDefinition",
+    "ActionExecutionContext",
+    "ActionSchema",
+    "AuthorizationDecision",
+    "CreateDshOrdariumOptions",
+    "DshOrdarium",
+    "EffectProfile",
+    "InstallOrdariumOptions",
+    "InvocationIdentity",
+    "JsonObject",
+    "JsonValue",
+    "ReconcileResult",
+  ]);
+  for (const name of rootSymbols) {
+    if (!allowedRootSymbols.has(name)) {
+      fail(
+        `@ordarium/dsh root façade exports non-curated symbol: ${name} ` +
+          "(move it to /advanced or extend the allowlist via a Delta Sheet)",
+      );
+    }
+  }
+  notes.push(`dsh root façade: ${rootSymbols.size} curated exports verified`);
+}
+
 function extractUnion(file, typeName) {
   const text = readFileSync(file, "utf8");
   const start = text.indexOf(`export type ${typeName} =`);

@@ -25,6 +25,10 @@
         ".": {
           "types": "./dist/src/index.d.ts",
           "import": "./dist/src/index.js"
+        },
+        "./advanced": {
+          "types": "./dist/src/advanced.d.ts",
+          "import": "./dist/src/advanced.js"
         }
       },
       "private": true
@@ -77,7 +81,7 @@
         "node:os",
         "node:path"
       ],
-      "relativeImportCount": 0
+      "relativeImportCount": 2
     },
     "@ordarium/ledger-sqlite": {
       "workspace": [

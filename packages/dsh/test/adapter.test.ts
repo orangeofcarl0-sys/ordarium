@@ -6,7 +6,7 @@ import {
   registerActions,
   type DshToolDefinition,
   type DshToolRunContext,
-} from "../src/index.js";
+} from "../src/advanced.js";
 
 const stringSchema = defineSchema<string>({ type: "string" }, (value) => {
   if (typeof value !== "string") throw new TypeError("expected string");
