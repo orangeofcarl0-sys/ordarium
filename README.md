@@ -2,7 +2,7 @@
 
 Ordarium 是**多 agent harness 的公共基石**：一个轻量、可嵌入、host-neutral 的 **Safe Action SDK + Effect Authority**。它不运行 Agent、不组装 Prompt、不调度或编排 agent，也不替代任何宿主 harness；它只包住真正会产生副作用的 Action，使一次调用具备稳定身份、分类授权证据、持久状态、并发所有权和诚实的崩溃恢复语义。DSH 是首个宿主；发布前以真实第二宿主（`@ordarium/host-mcp`）与宿主 conformance harness 机器证明内核中立，多个 agent/进程/宿主可共享同一本地 ledger（共账拓扑）。
 
-> 当前发布线为 `1.0.0`（正式线，MIT；G0–G9 验收完成，见 `evidence/G7/release-candidate-report.md` 与 `evidence/G9/exit-report.md`）。本文描述的公开表面与实现一致：精选 root、schema v2、quiesce/drain 生命周期与官方插件壳均已交付。
+> 当前发布线为 `1.0.0`（正式线，MIT；G0–G9 验收完成，见 `evidence/G7/release-candidate-report.md` 与 `evidence/G9/exit-report.md`）。**分发渠道为 GitHub**（DSH 插件生态惯例）：本仓库即包源，以 git tag（`ordarium-v1.0.0`）为版本锚；公共 npm 发布推迟至 DSH 公开后。
 
 ## 为什么安装
 
@@ -104,6 +104,22 @@ Ledger 不保存 raw input、raw business key、credential、任意 stack 或未
 - worker 协议、远程调度、Rust Runner、独立 daemon 或默认控制平面；
 - workflow、subagent scheduler 或 Palimpsest Runtime；
 - 默认多主机 authority、分布式共识或 secret vault。
+
+## 安装（GitHub 分发）
+
+分发渠道为 GitHub（DSH 插件生态惯例；见 `evidence/G7/release-candidate-report.md` §5 的分发决议）。消费方经 pnpm git 依赖安装——`#path=` 指向本仓库内的包子目录，`#<tag>` 锁定版本锚（首个版本锚：`ordarium-v1.0.0`）：
+
+```bash
+# 普通 DSH 插件作者（唯一推荐入口）
+pnpm add github:<owner>/<repo>#ordarium-v1.0.0#path=ordarium/packages/dsh
+
+# 需要默认 durable ledger / 第二宿主 / 测试夹具时按需追加
+pnpm add github:<owner>/<repo>#ordarium-v1.0.0#path=ordarium/packages/ledger-sqlite
+pnpm add github:<owner>/<repo>#ordarium-v1.0.0#path=ordarium/packages/host-mcp
+pnpm add -D github:<owner>/<repo>#ordarium-v1.0.0#path=ordarium/packages/testing
+```
+
+`<owner>/<repo>` 以仓库实际推送地址为准。五包已通过 tarball 消费验证（`pnpm test:package`），git 依赖走同一 dist 产物路径。
 
 ## 开发验证与 Node 政策
 

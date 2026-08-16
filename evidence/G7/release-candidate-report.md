@@ -42,22 +42,18 @@
 2. **发布目的地决议**：registry（npm 公共 / 私有）、`repository` 字段与组织归属；
 3. `1.0.0-rc.1` → `1.0.0` 的正式发布动作本身。
 
-## 5. 发布流程进入（2026-08-17 补录）
+## 5. 发布流程进入（2026-08-17 补录；分发决议变更见本节末）
 
 1. **工程分离**：Palimpsest 与 Ordarium 已完成仓内双根分离（commit `2cd5579`）——Python 线（运行时/测试/fixture/archive/pyproject）迁入 `palimpsest/`（101 测试在新位置全绿），Ordarium 规范迁入 `ordarium/docs/`，根 README 成为双项目索引。
 2. **版本升位**：五包 + workspace `1.0.0-rc.1` → **`1.0.0`**（正式线，G7 §1 决议的 rc→1.0.0 执行）；快照重生成（22 项）。
 3. **1.0.0 全门复跑**：`pnpm verify:release` 六门全 PASS（check 140 测试 / architecture / integration / conformance / docs 22 文档 / package 五 tarball）；Docker 矩阵双腿复跑（node:24.15.0-slim 与 node:24-bookworm 各 140 测试，双 `MATRIX_LEG_OK`）。
-4. **发布阻塞项**：`npm whoami` → `ENEEDAUTH`（本机未登录 registry）。`npm publish` 为外发动作，需所有者提供 registry 与凭据后执行：
-   ```powershell
-   Set-Location ordarium
-   npm login                      # 或配置 registry token
-   pnpm --filter @ordarium/core publish --access public --no-git-checks
-   pnpm --filter @ordarium/ledger-sqlite publish --access public --no-git-checks
-   pnpm --filter @ordarium/dsh publish --access public --no-git-checks
-   pnpm --filter @ordarium/testing publish --access public --no-git-checks
-   pnpm --filter @ordarium/host-mcp publish --access public --no-git-checks
-   ```
-   （顺序即依赖序；`pnpm publish` 会把 `workspace:*` 重写为已发布的 `1.0.0`。）
+4. **发布尝试与结果**：所有者完成 `npm login` 并执行五包发布，PUT 均被 403 拒绝（账号启用 2FA，需 OTP 或 granular token；另两条命令因缺 `./` 前缀被 npm 误判为 git 简写）。registry 复查五包仍 404——**零发布，`@ordarium` scope 与 1.0.0 版本保持干净**。
+
+### 分发决议变更（2026-08-17，所有者裁定）
+
+- **正式分发渠道改为 GitHub**（DSH 插件生态的推荐发布地）：仓库即包源，消费方经 pnpm git 依赖安装（`#path=` 指向 `ordarium/packages/<pkg>` 子目录 + `#ordarium-v1.0.0` tag）；本地已打 annotated tag `ordarium-v1.0.0` 作为版本锚。
+- **公共 npm 发布推迟**，触发条件：DSH 正式公开且真实宿主终验（A02/A08）通过、或生态出现明确的 registry 需求。届时按上文命令执行（`npm publish <tarball>` 记得 `./` 前缀与 `--otp`）。
+- 备选记录：GitHub Packages 要求 scope = GitHub owner（`@ordarium/*` 需更名为 `@<owner>/*`）；若未来走 GPR 需一次包名决议。
 
 ## 6. 最终命令与输出
 
