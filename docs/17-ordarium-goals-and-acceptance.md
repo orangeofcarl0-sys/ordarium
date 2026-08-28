@@ -755,6 +755,14 @@ G8 不阻塞首发（第二宿主 `host-mcp` 已在 G5 交付）。它只在首�
 |---|---|---|
 | G11 管理型 state kind | **已完成** | 见 `ordarium/evidence/G11/exit-report.md` |
 
+## 16.7 G12（RC 后追加）：共账拓扑并发压测
+
+依据 `ordarium/evidence/G12/design-spec.md`（2026-08-29 会话决议，evidence-only：零包变更、无 Delta Sheet）。交付物：`tools/stress-matrix.mjs` + `tools/stress-worker.mjs`（K 进程 × 三模式 × 一次性临时库）与 `evidence/G12/stress-report.md`/`stress-results.json`。结论：单写者天花板本机口径 ~1400 成功写/s，K=1..8 聚合吞吐持平、p50 稳定、代价集中尾延迟；最大争用下 CAS 冲突率 ≤0.75%、修订链无丢失更新——命题二判据④的参考数据落盘。附带发现：热库打开竞态（`LEDGER_BUSY`，宿主应退避重试；内核内置 open 重试待独立决议）。
+
+| Goal | 状态 | 说明 |
+|---|---|---|
+| G12 并发压测 | **已完成** | 见 `ordarium/evidence/G12/exit-report.md` |
+
 ## 17. 首发端到端验收矩阵
 
 | 领域 | 必测场景 | 主要 Goal | 核心断言 |

@@ -1,0 +1,337 @@
+{
+  "environment": {
+    "platform": "win32 x64",
+    "node": "v24.14.1",
+    "cpus": 24
+  },
+  "durationMsPerLeg": 4000,
+  "legs": [
+    {
+      "mode": "state-shared",
+      "processes": 1,
+      "durationMs": 4000,
+      "attempts": 5387,
+      "successes": 5387,
+      "conflicts": 0,
+      "throughputPerSec": 1346.8,
+      "conflictRatePct": 0,
+      "p50Ms": 0.672,
+      "p95Ms": 1.005,
+      "p99Ms": 1.609,
+      "maxMs": 29.827,
+      "invariantChecks": [
+        {
+          "id": "no-lost-update",
+          "pass": true,
+          "detail": "final revision 5387 == summed successes 5387"
+        }
+      ]
+    },
+    {
+      "mode": "state-shared",
+      "processes": 2,
+      "durationMs": 4000,
+      "attempts": 5613,
+      "successes": 5604,
+      "conflicts": 9,
+      "throughputPerSec": 1401,
+      "conflictRatePct": 0.16,
+      "p50Ms": 0.67,
+      "p95Ms": 0.969,
+      "p99Ms": 1.563,
+      "maxMs": 16.756,
+      "invariantChecks": [
+        {
+          "id": "no-lost-update",
+          "pass": true,
+          "detail": "final revision 5604 == summed successes 5604"
+        }
+      ]
+    },
+    {
+      "mode": "state-shared",
+      "processes": 4,
+      "durationMs": 4000,
+      "attempts": 5020,
+      "successes": 4998,
+      "conflicts": 22,
+      "throughputPerSec": 1249.5,
+      "conflictRatePct": 0.44,
+      "p50Ms": 0.71,
+      "p95Ms": 1.047,
+      "p99Ms": 2.194,
+      "maxMs": 19.37,
+      "invariantChecks": [
+        {
+          "id": "no-lost-update",
+          "pass": true,
+          "detail": "final revision 4998 == summed successes 4998"
+        }
+      ]
+    },
+    {
+      "mode": "state-shared",
+      "processes": 8,
+      "durationMs": 4000,
+      "attempts": 5038,
+      "successes": 5000,
+      "conflicts": 38,
+      "throughputPerSec": 1250,
+      "conflictRatePct": 0.75,
+      "p50Ms": 0.757,
+      "p95Ms": 1.259,
+      "p99Ms": 1.901,
+      "maxMs": 17.533,
+      "invariantChecks": [
+        {
+          "id": "no-lost-update",
+          "pass": true,
+          "detail": "final revision 5000 == summed successes 5000"
+        }
+      ]
+    },
+    {
+      "mode": "state-own",
+      "processes": 1,
+      "durationMs": 4000,
+      "attempts": 5639,
+      "successes": 5639,
+      "conflicts": 0,
+      "throughputPerSec": 1409.8,
+      "conflictRatePct": 0,
+      "p50Ms": 0.658,
+      "p95Ms": 0.89,
+      "p99Ms": 1.435,
+      "maxMs": 19.474,
+      "invariantChecks": [
+        {
+          "id": "own-0-consistent",
+          "pass": true,
+          "detail": "revision 5639 == successes 5639"
+        }
+      ]
+    },
+    {
+      "mode": "state-own",
+      "processes": 2,
+      "durationMs": 4000,
+      "attempts": 5398,
+      "successes": 5398,
+      "conflicts": 0,
+      "throughputPerSec": 1349.5,
+      "conflictRatePct": 0,
+      "p50Ms": 0.694,
+      "p95Ms": 1.062,
+      "p99Ms": 1.783,
+      "maxMs": 1649.451,
+      "invariantChecks": [
+        {
+          "id": "own-0-consistent",
+          "pass": true,
+          "detail": "revision 3019 == successes 3019"
+        },
+        {
+          "id": "own-1-consistent",
+          "pass": true,
+          "detail": "revision 2379 == successes 2379"
+        }
+      ]
+    },
+    {
+      "mode": "state-own",
+      "processes": 4,
+      "durationMs": 4000,
+      "attempts": 5266,
+      "successes": 5266,
+      "conflicts": 0,
+      "throughputPerSec": 1316.5,
+      "conflictRatePct": 0,
+      "p50Ms": 0.785,
+      "p95Ms": 1.255,
+      "p99Ms": 3718.663,
+      "maxMs": 4137.33,
+      "invariantChecks": [
+        {
+          "id": "own-0-consistent",
+          "pass": true,
+          "detail": "revision 2870 == successes 2870"
+        },
+        {
+          "id": "own-1-consistent",
+          "pass": true,
+          "detail": "revision 1 == successes 1"
+        },
+        {
+          "id": "own-2-consistent",
+          "pass": true,
+          "detail": "revision 2298 == successes 2298"
+        },
+        {
+          "id": "own-3-consistent",
+          "pass": true,
+          "detail": "revision 97 == successes 97"
+        }
+      ]
+    },
+    {
+      "mode": "state-own",
+      "processes": 8,
+      "durationMs": 4000,
+      "attempts": 5305,
+      "successes": 5305,
+      "conflicts": 0,
+      "throughputPerSec": 1326.3,
+      "conflictRatePct": 0,
+      "p50Ms": 0.712,
+      "p95Ms": 1.101,
+      "p99Ms": 111.362,
+      "maxMs": 3817.794,
+      "invariantChecks": [
+        {
+          "id": "own-0-consistent",
+          "pass": true,
+          "detail": "revision 670 == successes 670"
+        },
+        {
+          "id": "own-1-consistent",
+          "pass": true,
+          "detail": "revision 389 == successes 389"
+        },
+        {
+          "id": "own-2-consistent",
+          "pass": true,
+          "detail": "revision 77 == successes 77"
+        },
+        {
+          "id": "own-3-consistent",
+          "pass": true,
+          "detail": "revision 2430 == successes 2430"
+        },
+        {
+          "id": "own-4-consistent",
+          "pass": true,
+          "detail": "revision 243 == successes 243"
+        },
+        {
+          "id": "own-5-consistent",
+          "pass": true,
+          "detail": "revision 799 == successes 799"
+        },
+        {
+          "id": "own-6-consistent",
+          "pass": true,
+          "detail": "revision 432 == successes 432"
+        },
+        {
+          "id": "own-7-consistent",
+          "pass": true,
+          "detail": "revision 265 == successes 265"
+        }
+      ]
+    },
+    {
+      "mode": "ops-lifecycle",
+      "processes": 1,
+      "durationMs": 4000,
+      "attempts": 1668,
+      "successes": 1668,
+      "conflicts": 0,
+      "throughputPerSec": 417,
+      "conflictRatePct": 0,
+      "p50Ms": 2.195,
+      "p95Ms": 2.803,
+      "p99Ms": 7.77,
+      "maxMs": 30.793,
+      "invariantChecks": [
+        {
+          "id": "lifecycle-closed",
+          "pass": true,
+          "detail": "succeeded records 1668 == summed successes 1668"
+        },
+        {
+          "id": "sample-decodes",
+          "pass": true,
+          "detail": "op_c19da20201f537436b5132f6eac436e205acfe5f"
+        }
+      ]
+    },
+    {
+      "mode": "ops-lifecycle",
+      "processes": 2,
+      "durationMs": 4000,
+      "attempts": 1572,
+      "successes": 1572,
+      "conflicts": 0,
+      "throughputPerSec": 393,
+      "conflictRatePct": 0,
+      "p50Ms": 2.438,
+      "p95Ms": 3.225,
+      "p99Ms": 8.894,
+      "maxMs": 1745.654,
+      "invariantChecks": [
+        {
+          "id": "lifecycle-closed",
+          "pass": true,
+          "detail": "succeeded records 1572 == summed successes 1572"
+        },
+        {
+          "id": "sample-decodes",
+          "pass": true,
+          "detail": "op_e0ab7abf133839d824d678d00ceef5fd92f826a5"
+        }
+      ]
+    },
+    {
+      "mode": "ops-lifecycle",
+      "processes": 4,
+      "durationMs": 4000,
+      "attempts": 1588,
+      "successes": 1588,
+      "conflicts": 0,
+      "throughputPerSec": 397,
+      "conflictRatePct": 0,
+      "p50Ms": 2.405,
+      "p95Ms": 4.129,
+      "p99Ms": 663.619,
+      "maxMs": 3620.49,
+      "invariantChecks": [
+        {
+          "id": "lifecycle-closed",
+          "pass": true,
+          "detail": "succeeded records 1588 == summed successes 1588"
+        },
+        {
+          "id": "sample-decodes",
+          "pass": true,
+          "detail": "op_ea1045e1d3e946830bde1f361751a3c5c018f3a7"
+        }
+      ]
+    },
+    {
+      "mode": "ops-lifecycle",
+      "processes": 8,
+      "durationMs": 4000,
+      "attempts": 1279,
+      "successes": 1279,
+      "conflicts": 0,
+      "throughputPerSec": 319.8,
+      "conflictRatePct": 0,
+      "p50Ms": 2.823,
+      "p95Ms": 11.504,
+      "p99Ms": 1866.049,
+      "maxMs": 4264.907,
+      "invariantChecks": [
+        {
+          "id": "lifecycle-closed",
+          "pass": true,
+          "detail": "succeeded records 1279 == summed successes 1279"
+        },
+        {
+          "id": "sample-decodes",
+          "pass": true,
+          "detail": "op_270ad9b292b004ef537104ec40cfd6ee42f53ec7"
+        }
+      ]
+    }
+  ]
+}
