@@ -763,6 +763,17 @@ G8 不阻塞首发（第二宿主 `host-mcp` 已在 G5 交付）。它只在首�
 |---|---|---|
 | G12 并发压测 | **已完成** | 见 `ordarium/evidence/G12/exit-report.md` |
 
+## 16.8 条件触发的休眠 Goal（G13–G16）
+
+2026-08-29 会话决议：将四个条件触发项的设计**预先冻结**为休眠 spec——冻结设计而非排期；触发即按 spec 实施、无需重新设计；若触发时 docs/12–17 已漂移，以现行版为准逐条重核。触发确认与"解除休眠"须先在会话中决议，再按各自实现切片执行。
+
+| Goal | 内容 | 触发条件 | 冻结 spec |
+|---|---|---|---|
+| G13 | 对话型 message kind + 保留类（第三种墨水；Stage 2） | 任一真实宿主或 Palimpsest 复兴提出通信取证需求 | `ordarium/evidence/G13/design-spec.md` |
+| G14 | 管理型 state 的运维面（两工具 + scope `operations:state`） | 操作者/运维需要跨宿主查看管理型 state | `ordarium/evidence/G14/design-spec.md` |
+| G15 | 组合分片账本（`@ordarium/ledger-sharded`） | 持续超过目标环境重测的单写者天花板（G12 口径 ~1400 写/s）或 p99 不可接受 | `ordarium/evidence/G15/design-spec.md` |
+| G16 | `SqliteLedger` 打开退避重试（默认 `{attempts:5, delayMs:100}`） | 随时（最小项，可搭车实施） | `ordarium/evidence/G16/design-spec.md` |
+
 ## 17. 首发端到端验收矩阵
 
 | 领域 | 必测场景 | 主要 Goal | 核心断言 |
