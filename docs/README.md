@@ -17,4 +17,8 @@ Ordarium 的文档分两层：**开发者指南**（`dev/`，面向使用者的�
 | [`16-ordarium-mermaid-architecture-atlas.md`](16-ordarium-mermaid-architecture-atlas.md) | 全部视角的 Mermaid 投影 | 当前视觉架构索引 |
 | [`17-ordarium-goals-and-acceptance.md`](17-ordarium-goals-and-acceptance.md) | G0–G9 阶段目标、验收矩阵与发布门 | **Goal 与验收最高权威** |
 
+## 研究档案（从 [`research/`](research/agent-landscape-2026-08/README.md) 进入）
+
+[`research/agent-landscape-2026-08/`](research/agent-landscape-2026-08/README.md)：2026-08 多智能体架构全景的代码级取证（Grok/Kimi/Manus/Danus/OpenManus/Magentic 六系统）、Ordarium 的层级定位与复刻可行性推演、三种公共账本分类法、dsh 集成取证、两项目责任宪章。**研究参考，不是合同**——与 12–17 冲突时以 12–17 为准；其中"行动项"类结论进入 Goal 流程前只是提案。
+
 实现证据链（delta sheets、design specs、各 Goal exit reports、Node 矩阵、release candidate 报告）位于 [`../evidence/`](../evidence/)；机器验证入口见 [`../package.json`](../package.json)（`pnpm verify:release` / `verify:matrix` / `verify:architecture` / `verify:docs`）。
