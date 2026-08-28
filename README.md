@@ -111,7 +111,7 @@ Ledger 不保存 raw input、raw business key、credential、任意 stack 或未
 
 ## 安装（GitHub 分发）
 
-分发渠道为 GitHub（DSH 插件生态惯例；分发决议见 `evidence/G7/release-candidate-report.md` §5）。本工程已拆分为独立仓库（https://github.com/orangeofcarl0-sys/ordarium），五包位于 `packages/`，版本锚为 git tag（首个 `ordarium-v1.0.0`）与同名 GitHub Release。两种消费方式：
+分发渠道为 GitHub（DSH 插件生态惯例；分发决议见 `evidence/G7/release-candidate-report.md` §5）。本工程已拆分为独立仓库（https://github.com/orangeofcarl0-sys/ordarium），五包位于 `packages/`，版本锚为 git tag（首个 `ordarium-v1.0.0`）与同名 GitHub Release。两种消费方式（dsh profile 等 pnpm 场景另有**工作区成员模式**，见 [docs/dev/01](docs/dev/01-getting-started.md)）：
 
 **方式一：同 workspace 开发（推荐起步；Palimpsest 复兴插件即此路径）**
 

@@ -8,7 +8,7 @@
 
 ## 安装
 
-分发渠道为 GitHub（DSH 插件生态惯例）。两种方式：
+分发渠道为 GitHub（DSH 插件生态惯例）。三种方式：
 
 **方式一：同 workspace 开发（推荐起步）**
 
@@ -18,13 +18,28 @@ cd ordarium && pnpm install && pnpm run build
 # 你的插件工程依赖本 workspace（pnpm workspace 链接或 path 协议引入）
 ```
 
-**方式二：GitHub Release 五 tarball 一次安装**
+**方式二：GitHub Release 五 tarball 一次安装（npm）**
 
 ```bash
 pnpm add <release-assets>/ordarium-{core,ledger-sqlite,dsh,testing,host-mcp}-1.0.0.tgz
 ```
 
 私有期下载 Release 资产需带 token；转公开后 URL 直接可用。五包互相依赖自洽（这正是 CI 里 `pnpm test:package` 验证的内容）。
+
+**方式三：pnpm 工作区成员消费（dsh profile 场景）**
+
+pnpm **无法**从同批 tarball 解析兄弟依赖（对 `@ordarium/core@1.0.0` 直奔 registry 404），方式二只适用于 npm。pnpm 消费者把 Release 资产解包为本地目录并改写为 workspace 成员：
+
+```bash
+mkdir ordarium-pkgs && cd ordarium-pkgs
+for p in core ledger-sqlite dsh testing host-mcp; do
+  mkdir -p $p && tar -xzf <release-assets>/ordarium-$p-1.0.0.tgz -C $p
+done
+# 把每个包 package.json 里包间的 @ordarium/* 依赖从 ^1.0.0 改写回 workspace:*
+# （含 devDependencies——host-mcp 的 devDeps 里有 @ordarium/dsh）
+```
+
+然后把五个解包目录加入消费工程（dsh profile）的 `pnpm-workspace.yaml` 的 `packages` 列表，`pnpm install --no-frozen-lockfile`。发布 tarball 本体不动，改写只发生在本地解包副本。
 
 > 已知限制：`pnpm add github:...#path=packages/dsh` 式**单包** git 依赖暂不可用——包间 `workspace:*` 依赖在 git 安装语境无法解析。多包消费请用上述两种方式。
 

@@ -34,6 +34,12 @@ stateDiagram-v2
 
 时钟异常（跳变/停顿）下的保证：租约比较使用与 ledger 一致的时钟源；无法证明唯一 owner 时 fail closed / uncertain。
 
+## 宿主职责（合同项）
+
+1. **提供再入路径**：恢复在同一 Action 调用再次进入时惰性发生——宿主必须保证同身份调用可再入（工具重放，或经 `recoveryMaterial` 解析原始材料），否则已 dispatch 的副作用将永远停在 `uncertain`。
+2. **处理 `uncertain` 是显式合同**：宿主必须消费 uncertain 语义——呈现给操作者并经运维面 `reconcile`（只查询，永不 execute）处置、按 Provider 能力自行查询、或显式挂起待人审。**不得把 `uncertain` 当失败盲目重试**——那是 OpenManus 式文本劝说的反面教材（见研究档案 01 §5）。
+3. **进程退出走 dispose 字面序**：quiesce → unregister → drain → close（见上）；硬杀等价于跳过 drain，由 durable 恢复兜底，语义不变。
+
 ## 数据版本
 
 - 打开旧 v1 数据库自动**事务性迁移**到 v2（`LEDGER_MIGRATION_FAILED` 时库保持完整 v1，可排查后重试）；
