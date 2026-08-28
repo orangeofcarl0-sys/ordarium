@@ -328,4 +328,5 @@ Operations 默认不注册为模型工具。DSH 侧的受信注册点是**官方
 - **能力与门**：`LedgerCapabilities.stateRevisions`；能力不足的 ledger 写入前 `LEDGER_CAPABILITY_REQUIRED`，绝不静默降级。value 经 codec 与 1 MiB 上限（`PERSISTED_VALUE_TOO_LARGE`）。
 - **错误不对称性**：管理型与证据型同受 `LEDGER_FULL` fail-closed 保护、永不淘汰；淘汰语义属尚未实现的对话型保留类（Stage 2，需求拉动；任何需要 revision/CAS 之外新并发机制的 kind 是另一个引擎，不进此门）。
 - **派生视图**：`OperationListFilter.scope` 与 `listStatesReferencing` 是"预算即账本查询"与引用反查的两个结构保证读取面；身份溯源（callId/rootCallId/lineage）是跨 kind 时间线成链的载体。
+- **操作间依赖边（2026-08-29 决议：把拒绝写进合同）**：内核不提供 operation→operation 的直接边；跨 operation 的依赖、派生与因果关系经管理型 state record 的 refs 表达（state→operation），内核不加第二套边机制——record v2 合同保持零改动。
 - **发布面**：`createStateStore` 在 core 与 `@ordarium/dsh/advanced`；root façade 零漂移；host-mcp 运维面不变。

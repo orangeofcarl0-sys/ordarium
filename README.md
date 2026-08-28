@@ -2,7 +2,7 @@
 
 Ordarium 是**多 agent harness 的公共基石**：一个轻量、可嵌入、host-neutral 的 **Safe Action SDK + Effect Authority**。它不运行 Agent、不组装 Prompt、不调度或编排 agent，也不替代任何宿主 harness；它只包住真正会产生副作用的 Action，使一次调用具备稳定身份、分类授权证据、持久状态、并发所有权和诚实的崩溃恢复语义。DSH 是首个宿主；发布前以真实第二宿主（`@ordarium/host-mcp`）与宿主 conformance harness 机器证明内核中立，多个 agent/进程/宿主可共享同一本地 ledger（共账拓扑）。
 
-> 当前发布线为 `1.0.0`（正式线，MIT；G0–G9 验收完成，见 `evidence/G7/release-candidate-report.md` 与 `evidence/G9/exit-report.md`）。**分发渠道为 GitHub**（DSH 插件生态惯例）：本仓库即包源，以 git tag（`ordarium-v1.0.0`）为版本锚；公共 npm 发布推迟至 DSH 公开后。
+> 当前发布线为 `1.1.0`（正式线，MIT；G0–G11 验收完成，见 `evidence/G7/release-candidate-report.md`、`evidence/G9/exit-report.md` 与 `evidence/G11/exit-report.md`）。**分发渠道为 GitHub**（DSH 插件生态惯例）：本仓库即包源，以 git tag 为版本锚（首个 `ordarium-v1.0.0`；`ordarium-v1.1.0` 随下一次分发执行）；公共 npm 发布推迟至 DSH 公开后。
 
 ## 为什么安装
 
@@ -124,10 +124,10 @@ cd ordarium && pnpm install && pnpm run build
 **方式二：GitHub Release 五 tarball 一次安装**（五包互相依赖自洽性即 `pnpm test:package` 验证的内容）
 
 ```bash
-pnpm add <release-assets>/ordarium-{core,ledger-sqlite,dsh,testing,host-mcp}-1.0.0.tgz
+pnpm add <release-assets>/ordarium-{core,ledger-sqlite,dsh,testing,host-mcp}-1.1.0.tgz
 ```
 
-私有期下载 Release 资产需带 token；转公开后 URL（`https://github.com/orangeofcarl0-sys/ordarium/releases/download/ordarium-v1.0.0/<name>.tgz`）直接可用。
+私有期下载 Release 资产需带 token；转公开后 URL（`https://github.com/orangeofcarl0-sys/ordarium/releases/download/ordarium-v1.1.0/<name>.tgz`）直接可用。
 
 > 已知限制（如实记录）：`pnpm add github:...#path=packages/dsh` 式单包 git 依赖暂不可用——包间 `workspace:*` 依赖在 git 安装语境无法解析；多包消费走上述两种方式。公共 npm 发布仍是未来第三选项（触发条件见 G7 报告）。
 
@@ -141,6 +141,6 @@ pnpm verify:architecture
 
 `pnpm verify:architecture`（G0 起生效）机器校验包依赖图与禁止边、public API 快照、错误码/状态 union、SQLite schema 基线与 Compatibility Register。任何漂移必须先在 `evidence/` 附 Architecture Delta Sheet，再用 `pnpm snapshots:update` 重新生成快照并一起提交。
 
-五包发布线为 `1.0.0`（正式线；MIT）。engines 分层：ledger-sqlite / dsh / host-mcp 为 Node.js `>=24.15.0`，core / testing 为 `>=24.0.0`；Docker 矩阵（24.15.0 下限 + 当前 24.x）已在 `evidence/G7/node-matrix-report.md` 闭环，可用 `pnpm verify:matrix` 复跑。
+五包发布线为 `1.1.0`（正式线；MIT；G11 为 1.0.0 之后的首个 minor 加法，见 `evidence/G11/delta-G11-002-release-line.md`）。engines 分层：ledger-sqlite / dsh / host-mcp 为 Node.js `>=24.15.0`，core / testing 为 `>=24.0.0`；Docker 矩阵（24.15.0 下限 + 当前 24.x）已在 `evidence/G7/node-matrix-report.md` 闭环，可用 `pnpm verify:matrix` 复跑。
 
 完整合同、实施状态、架构与阶段验收见 [`docs/12-ordarium-product-baseline.md`](docs/12-ordarium-product-baseline.md)、[`docs/13-ordarium-action-contract.md`](docs/13-ordarium-action-contract.md)、[`docs/14-ordarium-implementation-plan.md`](docs/14-ordarium-implementation-plan.md)、[`docs/15-ordarium-complete-architecture.md`](docs/15-ordarium-complete-architecture.md)、[`docs/16-ordarium-mermaid-architecture-atlas.md`](docs/16-ordarium-mermaid-architecture-atlas.md) 与 [`docs/17-ordarium-goals-and-acceptance.md`](docs/17-ordarium-goals-and-acceptance.md)。

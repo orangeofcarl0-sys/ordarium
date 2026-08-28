@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  LedgerFullError,
   MemoryLedger,
   OrdariumRuntime,
   RESOURCE_LIMITS,
@@ -115,6 +116,63 @@ class NoStateLedger implements OperationLedger {
   }
 }
 
+/** Delegating wrapper whose state CAS always hits an exhausted store. */
+class LedgerWithFullState implements OperationLedger {
+  readonly capabilities = {
+    durability: "crash-durable",
+    coordination: "local-multi-process",
+    semanticCas: true,
+    liveLease: true,
+    semanticHistory: true,
+    stateRevisions: true,
+  } as const;
+  readonly #inner: OperationLedger;
+
+  constructor(inner: OperationLedger) {
+    this.#inner = inner;
+  }
+
+  get(operationId: string) {
+    return this.#inner.get(operationId);
+  }
+  create(...args: Parameters<OperationLedger["create"]>) {
+    return this.#inner.create(...args);
+  }
+  compareAndSet(...args: Parameters<OperationLedger["compareAndSet"]>) {
+    return this.#inner.compareAndSet(...args);
+  }
+  claim(...args: Parameters<OperationLedger["claim"]>) {
+    return this.#inner.claim(...args);
+  }
+  lease(operationId: string) {
+    return this.#inner.lease(operationId);
+  }
+  renewLease(...args: Parameters<OperationLedger["renewLease"]>) {
+    return this.#inner.renewLease(...args);
+  }
+  history(...args: Parameters<OperationLedger["history"]>) {
+    return this.#inner.history(...args);
+  }
+  list(...args: Parameters<OperationLedger["list"]>) {
+    return this.#inner.list(...args);
+  }
+  getState(namespace: string, key: string) {
+    return this.#inner.getState(namespace, key);
+  }
+  async compareAndSetState(): Promise<boolean> {
+    throw new LedgerFullError();
+  }
+  stateHistory(...args: Parameters<OperationLedger["stateHistory"]>) {
+    return this.#inner.stateHistory(...args);
+  }
+  listStatesReferencing(...args: Parameters<OperationLedger["listStatesReferencing"]>) {
+    return this.#inner.listStatesReferencing(...args);
+  }
+  listStates(...args: Parameters<OperationLedger["listStates"]>) {
+    return this.#inner.listStates(...args);
+  }
+}
+
 describe("state record codec (G11)", () => {
   it("round-trips a valid record and re-derives the digest invariant", () => {
     const record = stateRecord({ refs: [{ kind: "operation", id: `op_${"a".repeat(40)}` }] });
@@ -171,6 +229,15 @@ describe("state store gates (G11-A04/A06/A07)", () => {
     await expect(
       store.write(writeRequest({ value: "x".repeat(20) })),
     ).rejects.toMatchObject({ code: "PERSISTED_VALUE_TOO_LARGE" });
+  });
+
+  it("surfaces LEDGER_FULL fail-closed on state writes with no partial subject", async () => {
+    const inner = new MemoryLedger();
+    const full = new LedgerWithFullState(inner);
+    const store = createStateStore({ ledger: full });
+
+    await expect(store.write(writeRequest())).rejects.toMatchObject({ code: "LEDGER_FULL" });
+    expect(await inner.getState("palimpsest", "plan")).toBeUndefined();
   });
 });
 

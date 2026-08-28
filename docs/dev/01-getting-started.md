@@ -21,21 +21,21 @@ cd ordarium && pnpm install && pnpm run build
 **方式二：GitHub Release 五 tarball 一次安装（npm）**
 
 ```bash
-pnpm add <release-assets>/ordarium-{core,ledger-sqlite,dsh,testing,host-mcp}-1.0.0.tgz
+pnpm add <release-assets>/ordarium-{core,ledger-sqlite,dsh,testing,host-mcp}-1.1.0.tgz
 ```
 
 私有期下载 Release 资产需带 token；转公开后 URL 直接可用。五包互相依赖自洽（这正是 CI 里 `pnpm test:package` 验证的内容）。
 
 **方式三：pnpm 工作区成员消费（dsh profile 场景）**
 
-pnpm **无法**从同批 tarball 解析兄弟依赖（对 `@ordarium/core@1.0.0` 直奔 registry 404），方式二只适用于 npm。pnpm 消费者把 Release 资产解包为本地目录并改写为 workspace 成员：
+pnpm **无法**从同批 tarball 解析兄弟依赖（对 `@ordarium/core@1.1.0` 直奔 registry 404），方式二只适用于 npm。pnpm 消费者把 Release 资产解包为本地目录并改写为 workspace 成员：
 
 ```bash
 mkdir ordarium-pkgs && cd ordarium-pkgs
 for p in core ledger-sqlite dsh testing host-mcp; do
   mkdir -p $p && tar -xzf <release-assets>/ordarium-$p-1.0.0.tgz -C $p
 done
-# 把每个包 package.json 里包间的 @ordarium/* 依赖从 ^1.0.0 改写回 workspace:*
+# 把每个包 package.json 里包间的 @ordarium/* 依赖从 ^1.1.0 改写回 workspace:*
 # （含 devDependencies——host-mcp 的 devDeps 里有 @ordarium/dsh）
 ```
 
