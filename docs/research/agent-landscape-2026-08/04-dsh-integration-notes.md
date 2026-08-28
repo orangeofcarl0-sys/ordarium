@@ -28,6 +28,7 @@
 - **npm 五 tarball（CI 已证）**：`npm install <5 个 .tgz>`——npm 能从同批 tarball 解析兄弟依赖（`tools/package-consumer.mjs` 的 `test:package` 门）。
 - **pnpm 工作区成员模式（本实证）**：**pnpm 无法从同批 tarball 解析兄弟依赖**（对 `@ordarium/core@1.0.0` 直奔 registry 404；overrides 也救不了）。正确做法：解包五 tarball 到目录、把包间依赖改写为 `workspace:*`（含 devDependencies！host-mcp 的 devDeps 里有 `@ordarium/dsh`）、目录加入 profile 的 `pnpm-workspace.yaml` `packages` 列表、`pnpm install --no-frozen-lockfile`。发布 tarball 本体不动，改写只发生在本地解包副本。
 - **已知限制**（docs/dev/01 已载）：`pnpm add github:...#path=packages/dsh` 式单包 git 依赖不可用（包间 `workspace:*` 在 git 安装语境无法解析）。
+- **release tarball 消费的 integrity 要求**（2026-08-29 发现）：pnpm ≥11 供应链策略拒绝 lockfile 中无 `integrity` 字段的远程 tarball 条目——Palimpsest 仓以 release URL 依赖 `@ordarium/*`，其提交的 lockfile 因缺 integrity 被策略拒绝安装（`ERR_PNPM_MISSING_TARBALL_INTEGRITY`）。正确做法：正常安装（让 pnpm 下载并记录 integrity，可与 release 资产的 SHA-256 清单交叉核对）后提交 lockfile，**不要**用绕过策略的方式生成 lockfile。资产完整性已实测：gh API 下载的 `ordarium-core-1.0.0.tgz` SHA-256 与 release 清单逐字一致。
 - **engines 实测**：本机 node v24.14.1 < `>=24.15.0`（ledger-sqlite/dsh/host-mcp），pnpm 仅警告；ledger 全功能实测可用。floor 是保守下限，但宣称仍是 >=24.15.0。
 
 ## 4. 演示验证（已执行、后已清理）
