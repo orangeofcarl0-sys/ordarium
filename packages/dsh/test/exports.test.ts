@@ -15,6 +15,7 @@ const advancedValues = new Set([
   "asDshTool",
   "createDshOrdarium",
   "createOrdariumPlugin",
+  "createStateStore",
   "defaultDatabasePath",
   "registerActions",
 ]);
@@ -29,6 +30,7 @@ const forbiddenAtRoot = [
   "asDshTool",
   "createDshOrdarium",
   "createOrdariumPlugin",
+  "createStateStore",
   "defaultDatabasePath",
   "registerActions",
 ];

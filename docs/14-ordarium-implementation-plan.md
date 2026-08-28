@@ -117,4 +117,4 @@ pnpm verify:architecture
 
 ## 5. 与 Palimpsest 的关系
 
-Palimpsest 当前保持 Phase 0–2 快照，不参与以上发布门。**已批准的复兴方向（2026-08-17 会话决议，G9 冻结重申）：Palimpsest 以 DSH 插件形态复兴、进程内消费 `@ordarium/dsh`（或 Ordarium 官方插件壳的共享实例），承担 Goal Compiler/Task DAG/Context Compiler/预算/证据等编排层；其全部外部副作用经 Ordarium Action invocation，消费 terminal/uncertain 结果。** versioned Host Adapter 缝仅在 Palimpsest 保持独立运行时（如 Python 侧）时启用。Ordarium 不读取 Palimpsest Event Store，Palimpsest 也不直接修改 Ordarium ledger；两个权威、两个存储。旧 Python Runtime 的合同与教训（canonical schema、单一 replay fixture、一次性前向 migration）在复兴插件时移植，代码不移植。
+Palimpsest 当前保持 Phase 0–2 快照，不参与以上发布门。**已批准的复兴方向（2026-08-17 会话决议，G9 冻结重申）：Palimpsest 以 DSH 插件形态复兴、进程内消费 `@ordarium/dsh`（或 Ordarium 官方插件壳的共享实例），承担 Goal Compiler/Task DAG/Context Compiler/预算/证据等编排层；其全部外部副作用经 Ordarium Action invocation，消费 terminal/uncertain 结果。** versioned Host Adapter 缝仅在 Palimpsest 保持独立运行时（如 Python 侧）时启用。管理型事件（计划修订、角色表、门禁注册表）自 G11 起经 Ordarium state 合同落 Ordarium 共账存储；Palimpsest 仍是其唯一语义权威（修订含义、失效传播、晋升门禁），Ordarium 只存不释（G11 合同见 docs/13 §11；2026-08-29 会话决议修订原"两个权威、两个存储"条款——语义权威分立不变，存储合流）。旧 Python Runtime 的合同与教训（canonical schema、单一 replay fixture、一次性前向 migration）在复兴插件时移植，代码不移植。

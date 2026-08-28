@@ -1032,3 +1032,20 @@ flowchart LR
 ```
 
 产品应当保持“窄而深”：让各宿主继续做 Harness，让 Provider 继续拥有外部事实，Ordarium 只成为多 agent harness 之下可靠、可移植、可测试的公共副作用执行权威。kernel-first 四层结构链的意义在于：DSH 与 MCP 可以替换、SQLite 可以替换、更多宿主可以加入，而 L0 语义内核不动——这是“基石”的全部含义，也是它保持轻量的原因。这一形态既有独立价值，也为未来 Palimpsest 留出了足够而不过早耦合的接口。
+
+## 28. 管理型 state kind：一种时间线，三种墨水（G11）
+
+G11 把单一职责的表述从"operation = 副作用"精确化为"record = 多智能体共享时间线上的事件，三种契约类"。谱系取证（docs/research/agent-landscape-2026-08）显示：六系统在"持久共享状态/产出者≠判定者/加载式工具/预算机制"四器官上独立趋同，而疼痛全部发生在类间接缝（Danus 的 source_id 手工缝合、Grok Build 的三套存储）；因此契约层分立、存储层合流。
+
+```mermaid
+graph TB
+    subgraph TL["唯一共享时间线（一个引擎：append-only · 内容寻址摘要 · revision CAS）"]
+        direction LR
+        ST["管理型 state（G11）<br/>宿主声明 (namespace,key) · 修订链 · refs 存在性校验 · 溯源成链"]
+        OP["证据型 operation（现状）<br/>内容寻址 · 授权绑定 · verdict 永不丢"]
+        MSG["对话型 message<br/>未实现（Stage 2 需求拉动 · 保留类）"]
+    end
+    HOST["宿主（编排/失效传播/传输路由）"] -->|"StateStore / Action invocation"| TL
+```
+
+机器全部复用：state 不引入 revision/CAS/fence 之外的任何并发机制（准入门）；`stateRevisions` 能力门 fail-closed；SQLite v3 为纯增表迁移。内核不变量（append-only、fail-closed、错误码合同）一条不变；宿主禁止令与内核禁止令同时完好——Palimpsest 不自写并发原语，Ordarium 不解释管理语义。

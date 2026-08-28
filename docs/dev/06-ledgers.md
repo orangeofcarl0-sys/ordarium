@@ -2,6 +2,18 @@
 
 SQLite 不是 core 的语义依赖——core 只认 `OperationLedger` 端口 + `LedgerCapabilities`。选 ledger = 选你能诚实承诺的能力。
 
+## 一种时间线，三种墨水
+
+同一账本引擎、同一套 revision/CAS 机器，承载三种 record kind，各自的契约不同：
+
+| kind | 语义 | 保留 | 写门槛 |
+|---|---|---|---|
+| 证据型 operation（现状） | "世界被改变"（承诺） | 永久，verdict 永不丢 | 授权门控 + 内容寻址 |
+| 管理型 state（[11](11-state.md)） | "当前意图/计划" | append-only，修订链 | 身份 + 授权证据，revision CAS |
+| 对话型 message | "发生过通信" | 尚未实现（需求拉动，Stage 2） | —— |
+
+管理型与证据型同受 `LEDGER_FULL` fail-closed 保护：淘汰只会作用于（未来的）对话型，永不挤爆审计账本。任何新 kind 若需要 revision/CAS 之外的新并发机制，就是另一个引擎，不进这扇门。
+
 ## 两个内置实现
 
 | | `SqliteLedger`（默认） | `MemoryLedger` |

@@ -50,6 +50,10 @@ importers:
       '@ordarium/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@ordarium/testing':
+        specifier: workspace:*
+        version: link:../testing
 
   packages/testing:
     dependencies:

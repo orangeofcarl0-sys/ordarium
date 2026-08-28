@@ -98,4 +98,12 @@ export declare function createDshOrdarium(options?: CreateDshOrdariumOptions): D
 export declare function defaultDatabasePath(): string;
 export { createOrdariumPlugin } from "./plugin.js";
 export type { OrdariumPluginOptions, OrdariumPluginOps, OrdariumDshPlugin } from "./plugin.js";
+/**
+ * Management state surface (G11 design spec §2): the state kind stays behind
+ * /advanced - the root façade keeps its author golden path and never grows a
+ * state surface. Palimpsest-style hosts construct the store over the shared
+ * runtime they already consume.
+ */
+export { createStateStore } from "@ordarium/core";
+export type { CreateStateStoreOptions, OrdariumStateStore, StateListFilter, StateRecord, StateRecordPage, StateRef, StateRevisionPage, StateWriteRequest, } from "@ordarium/core";
 //# sourceMappingURL=advanced.d.ts.map

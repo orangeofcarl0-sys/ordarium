@@ -86,6 +86,30 @@ class LedgerWithCapabilities implements OperationLedger {
   list(filter?: Parameters<OperationLedger["list"]>[0], cursor?: string) {
     return this.#inner.list(filter, cursor);
   }
+  getState(namespace: string, key: string) {
+    return this.#inner.getState(namespace, key);
+  }
+  compareAndSetState(
+    namespace: string,
+    key: string,
+    expectedRevision: number,
+    next: Parameters<OperationLedger["compareAndSetState"]>[3],
+  ) {
+    return this.#inner.compareAndSetState(namespace, key, expectedRevision, next);
+  }
+  stateHistory(namespace: string, key: string, cursor?: string, limit?: number) {
+    return this.#inner.stateHistory(namespace, key, cursor, limit);
+  }
+  listStatesReferencing(
+    ref: Parameters<OperationLedger["listStatesReferencing"]>[0],
+    cursor?: string,
+    limit?: number,
+  ) {
+    return this.#inner.listStatesReferencing(ref, cursor, limit);
+  }
+  listStates(filter?: Parameters<OperationLedger["listStates"]>[0], cursor?: string) {
+    return this.#inner.listStates(filter, cursor);
+  }
 }
 
 const durableCaps = (coordination: LedgerCapabilities["coordination"]): LedgerCapabilities => ({
@@ -94,6 +118,7 @@ const durableCaps = (coordination: LedgerCapabilities["coordination"]): LedgerCa
   semanticCas: true,
   liveLease: true,
   semanticHistory: true,
+  stateRevisions: true,
 });
 
 describe("ledger capability gate (G1-A10)", () => {
@@ -191,6 +216,7 @@ describe("ledger capability gate (G1-A10)", () => {
       semanticCas: true,
       liveLease: true,
       semanticHistory: true,
+      stateRevisions: true,
     });
     expect(new MemoryLedger().capabilities.durability).toBe("volatile");
   });

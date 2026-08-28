@@ -1,9 +1,11 @@
 import type { EffectProfile } from "./effects.js";
-import { assertJsonValue, type JsonValue } from "./json.js";
+import { assertJsonValue, digestJson, type JsonValue } from "./json.js";
 import type {
   AuthorizationEvidenceKind,
   OperationRecord,
   OperationState,
+  StateRecord,
+  StateRef,
 } from "./types.js";
 
 /**
@@ -26,6 +28,9 @@ export const RESOURCE_LIMITS = Object.freeze({
   maxSafeErrorCodeLength: 128,
   maxSafeErrorMessageLength: 4_096,
   maxInputJsonBytes: 1_048_576,
+  maxStateSubjectLength: 128,
+  maxStateRefs: 64,
+  maxStateValueJsonBytes: 1_048_576,
 });
 
 const OPERATION_STATES = new Set<OperationState>([
@@ -59,6 +64,9 @@ const EVIDENCE_KINDS = new Set<AuthorizationEvidenceKind>([
 
 const HEX_64 = /^[0-9a-f]{64}$/u;
 const SAFE_ERROR_CODE = /^[A-Z][A-Z0-9_]*$/u;
+/** Subject parts must stay parseable inside "namespace/key@revision" reference ids. */
+const STATE_SUBJECT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
+const CANONICAL_REVISION = /^[1-9][0-9]*$/u;
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -122,15 +130,18 @@ function optionalDigestField(
   return value;
 }
 
-function decodeIdentity(value: unknown): OperationRecord["identity"] {
+function decodeIdentity(
+  value: unknown,
+  label = "Operation record",
+): OperationRecord["identity"] {
   if (!isObject(value)) {
-    throw new TypeError("Operation record identity must be an object");
+    throw new TypeError(`${label} identity must be an object`);
   }
   const lineage = value.lineage;
   if (lineage !== undefined) {
     if (!Array.isArray(lineage) || lineage.length > RESOURCE_LIMITS.maxLineageEntries) {
       throw new TypeError(
-        `Operation record identity lineage must be an array of at most ${RESOURCE_LIMITS.maxLineageEntries} entries`,
+        `${label} identity lineage must be an array of at most ${RESOURCE_LIMITS.maxLineageEntries} entries`,
       );
     }
     for (const entry of lineage) {
@@ -139,7 +150,7 @@ function decodeIdentity(value: unknown): OperationRecord["identity"] {
         entry.length === 0 ||
         entry.length > RESOURCE_LIMITS.maxIdentityFieldLength
       ) {
-        throw new TypeError("Operation record identity lineage entries must be non-empty bounded strings");
+        throw new TypeError(`${label} identity lineage entries must be non-empty bounded strings`);
       }
     }
   }
@@ -153,18 +164,21 @@ function decodeIdentity(value: unknown): OperationRecord["identity"] {
   };
 }
 
-function decodeAuthorization(value: unknown): NonNullable<OperationRecord["authorization"]> {
+function decodeAuthorization(
+  value: unknown,
+  label = "Operation record",
+): NonNullable<OperationRecord["authorization"]> {
   if (!isObject(value)) {
-    throw new TypeError("Operation record authorization must be an object");
+    throw new TypeError(`${label} authorization must be an object`);
   }
   const decision = value.decision;
   if (decision !== "allow" && decision !== "deny") {
-    throw new TypeError("Operation record authorization decision must be allow or deny");
+    throw new TypeError(`${label} authorization decision must be allow or deny`);
   }
   const kind = value.kind;
   if (typeof kind !== "string" || !EVIDENCE_KINDS.has(kind as AuthorizationEvidenceKind)) {
     throw new TypeError(
-      "Operation record authorization kind must be host-admission, policy-decision or human-approval",
+      `${label} authorization kind must be host-admission, policy-decision or human-approval`,
     );
   }
   return {
@@ -373,4 +387,110 @@ function assertCrossStateInvariants(record: OperationRecord): void {
   ) {
     throw violation("a reconciled failure must hold its safe error");
   }
+}
+
+/**
+ * Encode a state revision reference id (G11 design spec §1). Namespace and
+ * key characters are restricted by STATE_SUBJECT, so the encoding is
+ * unambiguous and always parseable.
+ */
+export function encodeStateRefId(namespace: string, key: string, revision: number): string {
+  return `${namespace}/${key}@${revision}`;
+}
+
+/**
+ * Parse a "namespace/key@revision" state reference id. Returns undefined for
+ * any id that is not a canonically encoded, resolvable subject revision.
+ */
+export function parseStateRefId(id: string): { namespace: string; key: string; revision: number } | undefined {
+  const separator = id.indexOf("/");
+  const at = id.lastIndexOf("@");
+  if (separator <= 0 || at < separator + 2 || at === id.length - 1) return undefined;
+  const namespace = id.slice(0, separator);
+  const key = id.slice(separator + 1, at);
+  const revisionText = id.slice(at + 1);
+  if (!STATE_SUBJECT.test(namespace) || !STATE_SUBJECT.test(key) || !CANONICAL_REVISION.test(revisionText)) {
+    return undefined;
+  }
+  const revision = Number(revisionText);
+  if (!Number.isSafeInteger(revision)) return undefined;
+  return { namespace, key, revision };
+}
+
+function stateSubjectField(container: Record<string, unknown>, key: string): string {
+  const value = stringField(container, key, RESOURCE_LIMITS.maxStateSubjectLength);
+  if (!STATE_SUBJECT.test(value)) {
+    throw new TypeError(
+      `State record ${key} must match [A-Za-z0-9][A-Za-z0-9._-]{0,127} so reference ids stay parseable`,
+    );
+  }
+  return value;
+}
+
+function decodeStateRef(value: unknown): StateRef {
+  if (!isObject(value)) {
+    throw new TypeError("State record ref must be an object");
+  }
+  const kind = value.kind;
+  if (kind !== "operation" && kind !== "state") {
+    throw new TypeError("State record ref kind must be operation or state");
+  }
+  const id = stringField(value, "id", RESOURCE_LIMITS.maxIdentityFieldLength);
+  if (kind === "state" && parseStateRefId(id) === undefined) {
+    throw new TypeError('State record ref id must be encoded as "namespace/key@revision"');
+  }
+  return { kind, id };
+}
+
+/**
+ * Decode and fully validate a StateRecord (G11 design spec §1). One codec,
+ * one source of shape truth: identity and authorization reuse the operation
+ * decoders, and the valueDigest is re-derived from the value so any persisted
+ * corruption fails closed at the ledger boundary instead of surfacing as
+ * silently altered management state.
+ */
+export function decodeStateRecord(value: unknown): StateRecord {
+  if (!isObject(value)) {
+    throw new TypeError("State record must be an object");
+  }
+  if (value.schemaVersion !== 1) {
+    throw new TypeError("Unsupported Ordarium state record schema");
+  }
+
+  const revision = value.revision;
+  if (!Number.isSafeInteger(revision) || (revision as number) < 1) {
+    throw new TypeError("State record revision must be a positive safe integer");
+  }
+  assertJsonValue(value.value, "State record value");
+  const stateValue = value.value as JsonValue;
+  const valueDigest = value.valueDigest;
+  if (typeof valueDigest !== "string" || !HEX_64.test(valueDigest)) {
+    throw new TypeError("State record valueDigest must be a lowercase 64-hex digest");
+  }
+  if (valueDigest !== digestJson(stateValue)) {
+    throw new TypeError("State record valueDigest does not match its value");
+  }
+  const refs = value.refs;
+  if (!Array.isArray(refs) || refs.length > RESOURCE_LIMITS.maxStateRefs) {
+    throw new TypeError(
+      `State record refs must be an array of at most ${RESOURCE_LIMITS.maxStateRefs} entries`,
+    );
+  }
+
+  const authorization = value.authorization === undefined
+    ? undefined
+    : decodeAuthorization(value.authorization, "State record");
+  const record: StateRecord = {
+    schemaVersion: 1,
+    namespace: stateSubjectField(value, "namespace"),
+    key: stateSubjectField(value, "key"),
+    revision: revision as number,
+    value: stateValue,
+    valueDigest,
+    refs: refs.map((entry) => decodeStateRef(entry)),
+    identity: decodeIdentity(value.identity, "State record"),
+    ...(authorization === undefined ? {} : { authorization }),
+    writtenAt: timestampField(value, "writtenAt"),
+  };
+  return record;
 }

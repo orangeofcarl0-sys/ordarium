@@ -143,7 +143,7 @@ export class UncertainOperationError extends OrdariumError {
 }
 
 export class PersistedValueTooLargeError extends OrdariumError {
-  constructor(operationId: string, label: string, limit: number) {
+  constructor(operationId: string | undefined, label: string, limit: number) {
     super(
       "PERSISTED_VALUE_TOO_LARGE",
       `${label} exceeds the configured ${limit}-byte persistence limit`,
@@ -216,5 +216,23 @@ export class LedgerClosedError extends OrdariumError {
 export class LedgerFullError extends OrdariumError {
   constructor() {
     super("LEDGER_FULL", "The storage backing the ledger is exhausted");
+  }
+}
+
+export class StateRevisionConflictError extends OrdariumError {
+  constructor(detail: string) {
+    super(
+      "STATE_REVISION_CONFLICT",
+      `The state revision moved before this write landed: ${detail}`,
+    );
+  }
+}
+
+export class StateRefNotFoundError extends OrdariumError {
+  constructor(detail: string) {
+    super(
+      "STATE_REF_NOT_FOUND",
+      `A state reference targets an object that does not exist: ${detail}`,
+    );
   }
 }

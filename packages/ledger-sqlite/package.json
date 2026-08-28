@@ -21,5 +21,8 @@
   "license": "MIT",
   "files": [
     "dist/src"
-  ]
+  ],
+  "devDependencies": {
+    "@ordarium/testing": "workspace:*"
+  }
 }

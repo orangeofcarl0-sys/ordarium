@@ -20,6 +20,8 @@
 
 **我想理解生命周期/崩溃后发生什么** → [10 生命周期与恢复](10-lifecycle-and-recovery.md)
 
+**我要在共享时间线上存计划/意图（宿主与编排作者）** → [11 管理型 state](11-state.md) → [06 Ledger 选择](06-ledgers.md)
+
 ## 一句话记住 Ordarium
 
 > 你声明 Action，Ordarium 保证：同一项工作不会因为重放、崩溃或并发而被悄悄执行两次；证明不了时，它诚实地返回 `uncertain`，绝不盲重试。

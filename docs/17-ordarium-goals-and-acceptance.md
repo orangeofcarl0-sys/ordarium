@@ -747,6 +747,14 @@ G8 不阻塞首发（第二宿主 `host-mcp` 已在 G5 交付）。它只在首�
 |---|---|---|
 | G9 运维面与插件壳 | **已完成** | 见 `ordarium/evidence/G9/exit-report.md` |
 
+## 16.6 G11（RC 后追加）：管理型 state kind 与统一时间线
+
+依据 `ordarium/evidence/G11/design-spec.md`（2026-08-29 会话决议冻结四项分叉：refs 一等 + 反向查询；修订 docs/14 §5 存储条款；乐观 CAS 单原语；每修订内容摘要）。交付物：core 的 `StateRecord` 合同 + `createStateStore` 门面 + 端口五方法 + `STATE_REVISION_CONFLICT`/`STATE_REF_NOT_FOUND`（错误码 27→29）；SQLite v3（state 修订表 + refs 反查表，v2→v3 纯增表迁移）；testing 的 `runStateLedgerConformance`（双实现共用）；`@ordarium/dsh/advanced` re-export（root façade 零漂移）；`OperationListFilter.scope`（"预算即账本查询"）。验收 G11-A01–A11 见该 spec §7；Palimpsest 侧迁移与 `OPERATION_UNCERTAIN` 接缝为姊妹仓库里程碑（命题二判据①载体）。
+
+| Goal | 状态 | 说明 |
+|---|---|---|
+| G11 管理型 state kind | **已完成** | 见 `ordarium/evidence/G11/exit-report.md` |
+
 ## 17. 首发端到端验收矩阵
 
 | 领域 | 必测场景 | 主要 Goal | 核心断言 |

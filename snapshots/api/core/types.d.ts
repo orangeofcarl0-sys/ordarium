@@ -102,6 +102,8 @@ export interface ClaimRequest {
 export interface OperationListFilter {
     actionName?: string | undefined;
     state?: OperationState | undefined;
+    /** Filter by the invocation identity scope; the derived-view primitive behind "budget as a ledger query". */
+    scope?: string | undefined;
     limit?: number | undefined;
 }
 export interface OperationPage {
@@ -111,6 +113,49 @@ export interface OperationPage {
 export interface OperationEventPage {
     events: OperationEvent[];
     nextCursor?: string | undefined;
+}
+/**
+ * Typed pointer from a management state revision to another timeline object
+ * (G11 design spec §1). The kernel stores and existence-checks references;
+ * it never interprets them - invalidation propagation stays host-side.
+ */
+export interface StateRef {
+    kind: "operation" | "state";
+    /** An operationId, or a state revision encoded as "namespace/key@revision". */
+    id: string;
+}
+/**
+ * One revision of a management state subject (G11 design spec §1). Subjects
+ * are host-declared mutable slots addressed by (namespace, key); every
+ * revision records the writer's invocation identity so the shared timeline
+ * chains across record kinds. Append-only: revocation is expressed by
+ * writing a new revision.
+ */
+export interface StateRecord {
+    schemaVersion: 1;
+    namespace: string;
+    key: string;
+    /** Monotonic per subject; the first write is revision 1. */
+    revision: number;
+    value: JsonValue;
+    /** Canonical content digest of value; a decode-time integrity invariant. */
+    valueDigest: string;
+    refs: StateRef[];
+    identity: InvocationIdentity;
+    authorization?: AuthorizationRecord | undefined;
+    writtenAt: string;
+}
+export interface StateRevisionPage {
+    revisions: StateRecord[];
+    nextCursor?: string | undefined;
+}
+export interface StateRecordPage {
+    records: StateRecord[];
+    nextCursor?: string | undefined;
+}
+export interface StateListFilter {
+    namespace?: string | undefined;
+    limit?: number | undefined;
 }
 export type LedgerCoordination = "single-isolate" | "single-process-exclusive" | "local-multi-process";
 /**
@@ -125,6 +170,8 @@ export interface LedgerCapabilities {
     readonly semanticCas: true;
     readonly liveLease: boolean;
     readonly semanticHistory: boolean;
+    /** Revisioned management state (the G11 state kind) on the same timeline machinery. */
+    readonly stateRevisions: boolean;
 }
 export interface OperationLedger {
     readonly capabilities: LedgerCapabilities;
@@ -145,6 +192,17 @@ export interface OperationLedger {
     renewLease(operationId: string, owner: string, fencingToken: number, expiresAt: string): Promise<boolean>;
     history(operationId: string, cursor?: string, limit?: number): Promise<OperationEventPage>;
     list(filter?: OperationListFilter, cursor?: string): Promise<OperationPage>;
+    /** Current revision of a management state subject; undefined when absent. */
+    getState(namespace: string, key: string): Promise<StateRecord | undefined>;
+    /**
+     * Optimistic revision CAS for a state subject (G11 §1): expectedRevision 0
+     * creates the subject; false means the revision moved or the subject is
+     * absent. No lease - the CAS is the whole arbitration.
+     */
+    compareAndSetState(namespace: string, key: string, expectedRevision: number, next: StateRecord): Promise<boolean>;
+    stateHistory(namespace: string, key: string, cursor?: string, limit?: number): Promise<StateRevisionPage>;
+    listStatesReferencing(ref: StateRef, cursor?: string, limit?: number): Promise<StateRecordPage>;
+    listStates(filter?: StateListFilter, cursor?: string): Promise<StateRecordPage>;
     close?(): Promise<void> | void;
 }
 //# sourceMappingURL=types.d.ts.map

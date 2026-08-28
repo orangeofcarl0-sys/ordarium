@@ -33,6 +33,7 @@ describe("SqliteLedger", () => {
       semanticCas: true,
       liveLease: true,
       semanticHistory: true,
+      stateRevisions: true,
     });
     ledger.close();
   });

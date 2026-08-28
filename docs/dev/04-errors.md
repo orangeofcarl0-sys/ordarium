@@ -37,6 +37,13 @@
 | `INPUT_TOO_LARGE` | 输入超过 1 MiB canonical JSON 上限 | 缩小输入；发生在任何持久化之前 |
 | `PERSISTED_VALUE_TOO_LARGE` | output/receipt 超过持久化上限 | dispatch 前可修正；dispatch 后按 uncertain 处理 |
 
+## 管理型 state
+
+| code | 含义 | 调用者动作 |
+|---|---|---|
+| `STATE_REVISION_CONFLICT` | state 修订在写入前被其他写者移动（含 0=创建时已存在） | 重读当前修订，合并意图后以新 `expectedRevision` 重试；不得盲目覆盖 |
+| `STATE_REF_NOT_FOUND` | refs 指向不存在的 operation / state 修订 | 先落被引对象，或移除悬空引用后重写 |
+
 ## 生命周期
 
 | code | 含义 | 调用者动作 |
@@ -51,7 +58,7 @@
 | `LEDGER_CAPABILITY_REQUIRED` | ledger 能力不覆盖该 profile/拓扑 | 配置合格的 durable ledger 或显式降级 profile；**不会静默 fallback 到内存** |
 | `LEDGER_OPEN_FAILED` | 打不开数据库/属于别的应用 | 检查路径与占用；fail closed |
 | `LEDGER_NEWER_SCHEMA` | 数据库版本高于本运行时 | 升级 Ordarium；不自动降级 |
-| `LEDGER_MIGRATION_FAILED` | v1→v2 迁移失败（已回滚） | 数据库保持完整 v1；排查后重试打开 |
+| `LEDGER_MIGRATION_FAILED` | 迁移失败（已回滚；v1→v3 重建 / v2→v3 纯增表） | 数据库保持完整旧版本；排查后重试打开 |
 | `LEDGER_BUSY` | 数据库被其他写入者锁定 | 稍后重试；保持同一身份 |
 | `LEDGER_CORRUPT` | 记录/内容损坏 | fail closed；从一致性备份恢复 |
 | `LEDGER_CLOSED` | 已关闭后使用 | 编程错误 |

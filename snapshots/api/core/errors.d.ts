@@ -52,7 +52,7 @@ export declare class UncertainOperationError extends OrdariumError {
     constructor(operationId: string);
 }
 export declare class PersistedValueTooLargeError extends OrdariumError {
-    constructor(operationId: string, label: string, limit: number);
+    constructor(operationId: string | undefined, label: string, limit: number);
 }
 export declare class InputTooLargeError extends OrdariumError {
     constructor(limit: number);
@@ -84,5 +84,11 @@ export declare class LedgerClosedError extends OrdariumError {
 }
 export declare class LedgerFullError extends OrdariumError {
     constructor();
+}
+export declare class StateRevisionConflictError extends OrdariumError {
+    constructor(detail: string);
+}
+export declare class StateRefNotFoundError extends OrdariumError {
+    constructor(detail: string);
 }
 //# sourceMappingURL=errors.d.ts.map

@@ -370,7 +370,7 @@ try {
 
   const raw = new DatabaseSync(databasePath);
   const baseline = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     pragmas: {
       application_id: readPragma(raw, "application_id"),
       user_version: readPragma(raw, "user_version"),
@@ -396,15 +396,25 @@ try {
         "SELECT operation_id, semantic_revision, state, at, record_json FROM ordarium_operation_events ORDER BY operation_id, semantic_revision",
       )
       .all(),
+    stateRevisions: raw
+      .prepare(
+        "SELECT namespace, key, revision, value_digest, written_at, record_json FROM ordarium_state_revisions ORDER BY namespace, key, revision",
+      )
+      .all(),
+    stateRefs: raw
+      .prepare(
+        "SELECT ref_kind, ref_id, namespace, key, revision FROM ordarium_state_refs ORDER BY ref_kind, ref_id, namespace, key, revision",
+      )
+      .all(),
   };
   raw.close();
   if (baseline.pragmas.application_id !== 0x4f524441) {
     fail(`ledger baseline: application_id is not ORDA (${baseline.pragmas.application_id})`);
   }
-  if (baseline.pragmas.user_version !== 2) {
-    fail(`ledger baseline: user_version is not 2 (${baseline.pragmas.user_version})`);
+  if (baseline.pragmas.user_version !== 3) {
+    fail(`ledger baseline: user_version is not 3 (${baseline.pragmas.user_version})`);
   }
-  compareJsonSnapshot("sqlite-v2.json", baseline);
+  compareJsonSnapshot("sqlite-v3.json", baseline);
 } finally {
   rmSync(workdir, { recursive: true, force: true });
 }

@@ -84,7 +84,7 @@
       "nodeBuiltins": [
         "node:crypto"
       ],
-      "relativeImportCount": 11
+      "relativeImportCount": 12
     },
     "@ordarium/dsh": {
       "workspace": [
@@ -127,7 +127,7 @@
       ],
       "external": [],
       "nodeBuiltins": [],
-      "relativeImportCount": 1
+      "relativeImportCount": 2
     }
   },
   "errorCodes": [
@@ -157,7 +157,9 @@
     "PRINCIPAL_CONFLICT",
     "RUNTIME_CLOSED",
     "RUNTIME_QUIESCING",
-    "SIMULATED_PROCESS_CRASH"
+    "SIMULATED_PROCESS_CRASH",
+    "STATE_REF_NOT_FOUND",
+    "STATE_REVISION_CONFLICT"
   ],
   "operationStates": [
     "proposed",

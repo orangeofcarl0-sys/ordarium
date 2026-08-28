@@ -1,4 +1,4 @@
-import { decodeOperationRecord } from "./codec.js";
+import { decodeOperationRecord, decodeStateRecord } from "./codec.js";
 import type {
   ClaimRequest,
   LiveLease,
@@ -8,9 +8,18 @@ import type {
   OperationListFilter,
   OperationPage,
   OperationRecord,
+  StateListFilter,
+  StateRecord,
+  StateRecordPage,
+  StateRef,
+  StateRevisionPage,
 } from "./types.js";
 
 const DEFAULT_PAGE_LIMIT = 100;
+
+function stateSubject(namespace: string, key: string): string {
+  return `${namespace}\u0000${key}`;
+}
 
 function clone<T>(value: T): T {
   return structuredClone(value);
@@ -45,6 +54,23 @@ function decodeHistoryCursor(cursor: string): number {
   return revision;
 }
 
+function decodeStateSubjectCursor(cursor: string): { s: string } {
+  const parsed = decodeCursor(cursor);
+  if (typeof parsed.s !== "string") {
+    throw new TypeError("Opaque state list cursor is invalid");
+  }
+  return { s: parsed.s };
+}
+
+function decodeStateRefCursor(cursor: string): { s: string; r: number } {
+  const parsed = decodeCursor(cursor);
+  const revision = Number(parsed.r);
+  if (typeof parsed.s !== "string" || !Number.isSafeInteger(revision) || revision < 0) {
+    throw new TypeError("Opaque state reference cursor is invalid");
+  }
+  return { s: parsed.s, r: revision };
+}
+
 /**
  * Volatile single-isolate ledger implementing the full v2 port contract
  * (G2 design spec §2): semantic CAS, atomic claim+lease, lightweight lease
@@ -57,12 +83,15 @@ export class MemoryLedger implements OperationLedger {
     semanticCas: true,
     liveLease: true,
     semanticHistory: true,
+    stateRevisions: true,
   } as const;
 
   readonly #records = new Map<string, OperationRecord>();
   readonly #events = new Map<string, OperationEvent[]>();
   readonly #leases = new Map<string, LiveLease>();
   #leaseRevisions = new Map<string, number>();
+  /** Ascending revision chains per subject; element i holds revision i + 1. */
+  readonly #stateSubjects = new Map<string, StateRecord[]>();
   #clock: () => Date;
 
   constructor(options: { clock?: (() => Date) | undefined } = {}) {
@@ -205,6 +234,7 @@ export class MemoryLedger implements OperationLedger {
     const records = [...this.#records.values()]
       .filter((record) => filter.actionName === undefined || record.actionName === filter.actionName)
       .filter((record) => filter.state === undefined || record.state === filter.state)
+      .filter((record) => filter.scope === undefined || record.identity.scope === filter.scope)
       .filter((record) => {
         if (after === undefined) return true;
         if (record.updatedAt !== after.u) return record.updatedAt < after.u;
@@ -220,6 +250,120 @@ export class MemoryLedger implements OperationLedger {
       ? encodeCursor({ u: last.updatedAt, o: last.operationId })
       : undefined;
     return { records, ...(nextCursor === undefined ? {} : { nextCursor }) };
+  }
+
+  async getState(namespace: string, key: string): Promise<StateRecord | undefined> {
+    const revisions = this.#stateSubjects.get(stateSubject(namespace, key));
+    const current = revisions?.[revisions.length - 1];
+    return current === undefined ? undefined : clone(decodeStateRecord(current));
+  }
+
+  async compareAndSetState(
+    namespace: string,
+    key: string,
+    expectedRevision: number,
+    next: StateRecord,
+  ): Promise<boolean> {
+    if (
+      next.namespace !== namespace ||
+      next.key !== key ||
+      next.revision !== expectedRevision + 1
+    ) {
+      return false;
+    }
+    const subject = stateSubject(namespace, key);
+    const revisions = this.#stateSubjects.get(subject);
+    if (expectedRevision === 0) {
+      if (revisions !== undefined && revisions.length > 0) return false;
+    } else if (revisions === undefined || revisions.length !== expectedRevision) {
+      return false;
+    }
+    const saved = clone(decodeStateRecord(next));
+    const chain = revisions ?? [];
+    chain.push(saved);
+    this.#stateSubjects.set(subject, chain);
+    return true;
+  }
+
+  async stateHistory(
+    namespace: string,
+    key: string,
+    cursor?: string,
+    limit?: number,
+  ): Promise<StateRevisionPage> {
+    const after = cursor === undefined ? undefined : decodeHistoryCursor(cursor);
+    const revisions = this.#stateSubjects.get(stateSubject(namespace, key)) ?? [];
+    const pairs = revisions
+      .map((record, index) => ({ revision: index + 1, record }))
+      .filter((entry) => after === undefined || entry.revision > after);
+    return this.#pageStateRevisions(pairs, limit);
+  }
+
+  async listStatesReferencing(
+    ref: StateRef,
+    cursor?: string,
+    limit?: number,
+  ): Promise<StateRecordPage> {
+    const after = cursor === undefined ? undefined : decodeStateRefCursor(cursor);
+    const matches: { subject: string; revision: number; record: StateRecord }[] = [];
+    for (const [subject, revisions] of this.#stateSubjects) {
+      revisions.forEach((record, index) => {
+        if (
+          record.refs.some((candidate) => candidate.kind === ref.kind && candidate.id === ref.id)
+        ) {
+          matches.push({ subject, revision: index + 1, record });
+        }
+      });
+    }
+    matches.sort((left, right) =>
+      left.subject < right.subject ? -1 : left.subject > right.subject ? 1 : left.revision - right.revision,
+    );
+    const bound = Math.max(0, limit ?? DEFAULT_PAGE_LIMIT);
+    const page = matches
+      .filter((entry) =>
+        after === undefined ||
+        entry.subject > after.s ||
+        (entry.subject === after.s && entry.revision > after.r),
+      )
+      .slice(0, bound);
+    const records = page.map((entry) => clone(decodeStateRecord(entry.record)));
+    const last = page[page.length - 1];
+    const nextCursor = matches.length > bound && last !== undefined
+      ? encodeCursor({ s: last.subject, r: String(last.revision) })
+      : undefined;
+    return { records, ...(nextCursor === undefined ? {} : { nextCursor }) };
+  }
+
+  async listStates(filter: StateListFilter = {}, cursor?: string): Promise<StateRecordPage> {
+    const after = cursor === undefined ? undefined : decodeStateSubjectCursor(cursor);
+    const bound = Math.max(0, filter.limit ?? DEFAULT_PAGE_LIMIT);
+    const candidates = [...this.#stateSubjects.entries()]
+      .map(([subject, revisions]) => ({ subject, current: revisions[revisions.length - 1] }))
+      .filter((entry): entry is { subject: string; current: StateRecord } => entry.current !== undefined)
+      .filter((entry) => filter.namespace === undefined || entry.current.namespace === filter.namespace)
+      .filter((entry) => after === undefined || entry.subject > after.s)
+      .sort((left, right) => (left.subject < right.subject ? -1 : left.subject > right.subject ? 1 : 0));
+    const page = candidates.slice(0, bound);
+    const records = page.map((entry) => clone(decodeStateRecord(entry.current)));
+    const last = page[page.length - 1];
+    const nextCursor = candidates.length > bound && last !== undefined
+      ? encodeCursor({ s: last.subject })
+      : undefined;
+    return { records, ...(nextCursor === undefined ? {} : { nextCursor }) };
+  }
+
+  #pageStateRevisions(
+    pairs: { revision: number; record: StateRecord }[],
+    limit?: number,
+  ): StateRevisionPage {
+    const bound = Math.max(0, limit ?? DEFAULT_PAGE_LIMIT);
+    const page = pairs.slice(0, bound);
+    const revisions = page.map((entry) => clone(decodeStateRecord(entry.record)));
+    const last = page[page.length - 1];
+    const nextCursor = pairs.length > bound && last !== undefined
+      ? encodeCursor({ r: String(last.revision) })
+      : undefined;
+    return { revisions, ...(nextCursor === undefined ? {} : { nextCursor }) };
   }
 
   #pageEvents(events: OperationEvent[], limit?: number): OperationEventPage {

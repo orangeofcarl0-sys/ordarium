@@ -317,3 +317,15 @@ stateDiagram-v2
 前三者只读；`reconcileOnly` 复用正常 Runtime 的同一个 RecoveryEvidenceEvaluator，但 mode 永久禁止 `execute()`，即使 Provider 返回 `absent + retrySafe` 也保持 `uncertain`。首发没有 `forceRetry`、raw SQL、开放式 `forceTransition` 或 manual attestation。
 
 Operations 默认不注册为模型工具。DSH 侧的受信注册点是**官方插件壳**（G9：`createOrdariumPlugin` 的 `operations.authorization` 注入，构造期校验）；工具只见 model 视图，operator 审计全文走 `plugin.ops`（进程内 API，宿主命令消费）。它使用 core 的同一 sanitized projector，不能直接读 SQLite、复制 record DTO 或自行解释状态。
+
+## 11. 管理型 state kind（G11）
+
+共享时间线的第二种 record kind："record = 多智能体共享时间线上的事件"精确化自本节生效——证据型 operation 与管理型 state 共用同一账本引擎、同一套 revision/CAS 机器、同一条迁移故事；差异集中在信任模型、保留策略与失败代价，不在并发机制。
+
+- **合同对象**：`StateRecord`（schemaVersion 1）——宿主声明的 `(namespace, key)` 可变槽位 + 单调 `revision`（首写为 1）+ schema/JSON 校验的 `value` + 内容摘要 `valueDigest`（decode 期重导出，损坏 fail closed）+ 一等 `refs`（类型化指针：operationId 或 `namespace/key@revision`）+ 写者 `identity` 溯源 + 可选授权证据。
+- **写门槛与仲裁**：写 = 身份 + 授权证据（默认宿主准入）；仲裁 = 乐观 revision CAS 单原语（`compareAndSetState`，expectedRevision 0 表示创建），无 lease/fence——单写者纪律是宿主调度策略，不是内核机制。
+- **内核只存不释**：refs 写入期做存在性校验（悬空 `STATE_REF_NOT_FOUND`，fail closed），内核不解释引用语义；失效传播、晋升、级联撤销全部留在宿主（Palimpsest 宪章禁止令不变：宿主不自写 CAS/fence/锁，内核不伸手编排）。
+- **能力与门**：`LedgerCapabilities.stateRevisions`；能力不足的 ledger 写入前 `LEDGER_CAPABILITY_REQUIRED`，绝不静默降级。value 经 codec 与 1 MiB 上限（`PERSISTED_VALUE_TOO_LARGE`）。
+- **错误不对称性**：管理型与证据型同受 `LEDGER_FULL` fail-closed 保护、永不淘汰；淘汰语义属尚未实现的对话型保留类（Stage 2，需求拉动；任何需要 revision/CAS 之外新并发机制的 kind 是另一个引擎，不进此门）。
+- **派生视图**：`OperationListFilter.scope` 与 `listStatesReferencing` 是"预算即账本查询"与引用反查的两个结构保证读取面；身份溯源（callId/rootCallId/lineage）是跨 kind 时间线成链的载体。
+- **发布面**：`createStateStore` 在 core 与 `@ordarium/dsh/advanced`；root façade 零漂移；host-mcp 运维面不变。

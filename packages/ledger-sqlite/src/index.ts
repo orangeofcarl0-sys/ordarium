@@ -11,6 +11,7 @@ import {
   LedgerNewerSchemaError,
   LedgerOpenFailedError,
   decodeOperationRecord,
+  decodeStateRecord,
   type ClaimRequest,
   type LiveLease,
   type OperationEvent,
@@ -19,10 +20,15 @@ import {
   type OperationListFilter,
   type OperationPage,
   type OperationRecord,
+  type StateListFilter,
+  type StateRecord,
+  type StateRecordPage,
+  type StateRef,
+  type StateRevisionPage,
 } from "@ordarium/core";
 
 const APPLICATION_ID = 0x4f524441; // ASCII "ORDA"
-const LEDGER_SCHEMA_VERSION = 2;
+const LEDGER_SCHEMA_VERSION = 3;
 const DEFAULT_PAGE_LIMIT = 100;
 
 export interface SqliteLedgerOptions {
@@ -32,10 +38,12 @@ export interface SqliteLedgerOptions {
 
 /**
  * Crash-durable SQLite reference ledger implementing the full v2 port
- * contract (G2 design spec §2/§3): semantic CAS with fence verification,
- * atomic claim+lease, lightweight lease renewal that never touches semantic
- * state, opaque cursor pagination, a transactional v1->v2 forward migration
- * and a stable infrastructure error family.
+ * contract (G2 design spec §2/§3) plus the G11 state kind: semantic CAS with
+ * fence verification, atomic claim+lease, lightweight lease renewal that
+ * never touches semantic state, revision-CAS management state with a
+ * reference reverse index, opaque cursor pagination, transactional forward
+ * migrations (v1 -> v3 rebuild, v2 -> v3 additive) and a stable
+ * infrastructure error family.
  */
 export class SqliteLedger implements OperationLedger {
   readonly capabilities = {
@@ -44,6 +52,7 @@ export class SqliteLedger implements OperationLedger {
     semanticCas: true,
     liveLease: true,
     semanticHistory: true,
+    stateRevisions: true,
   } as const;
 
   readonly path: string;
@@ -85,6 +94,8 @@ export class SqliteLedger implements OperationLedger {
         this.#database.exec(`PRAGMA user_version = ${LEDGER_SCHEMA_VERSION}`);
       } else if (schemaVersion === 1) {
         this.#migrateFromV1();
+      } else if (schemaVersion === 2) {
+        this.#migrateFromV2();
       }
     } catch (error) {
       this.#closeSilently();
@@ -341,6 +352,10 @@ export class SqliteLedger implements OperationLedger {
       clauses.push("state = ?");
       parameters.push(filter.state);
     }
+    if (filter.scope !== undefined) {
+      clauses.push("json_extract(record_json, '$.identity.scope') = ?");
+      parameters.push(filter.scope);
+    }
     const after = cursor === undefined ? undefined : decodeListCursor(cursor);
     if (after !== undefined) {
       clauses.push("(updated_at < ? OR (updated_at = ? AND operation_id < ?))");
@@ -359,6 +374,167 @@ export class SqliteLedger implements OperationLedger {
     const last = records[records.length - 1];
     const nextCursor = rows.length > bound && last !== undefined
       ? encodeCursor({ u: last.updatedAt, o: last.operationId })
+      : undefined;
+    return { records, ...(nextCursor === undefined ? {} : { nextCursor }) };
+  }
+
+  async getState(namespace: string, key: string): Promise<StateRecord | undefined> {
+    this.#assertOpen();
+    const row = this.#prepare(`
+      SELECT namespace, key, revision, record_json
+      FROM ordarium_state_revisions
+      WHERE namespace = ? AND key = ?
+      ORDER BY revision DESC
+      LIMIT 1
+    `).get(namespace, key);
+    return row === undefined ? undefined : this.#parseStateRecord(row);
+  }
+
+  async compareAndSetState(
+    namespace: string,
+    key: string,
+    expectedRevision: number,
+    next: StateRecord,
+  ): Promise<boolean> {
+    this.#assertOpen();
+    if (
+      !Number.isSafeInteger(expectedRevision) ||
+      expectedRevision < 0 ||
+      next.namespace !== namespace ||
+      next.key !== key ||
+      next.revision !== expectedRevision + 1
+    ) {
+      return false;
+    }
+    decodeStateRecord(next);
+
+    try {
+      this.#begin();
+      if (expectedRevision === 0) {
+        const existing = this.#prepare(
+          "SELECT 1 FROM ordarium_state_revisions WHERE namespace = ? AND key = ? LIMIT 1",
+        ).get(namespace, key);
+        if (existing !== undefined) {
+          this.#commit();
+          return false;
+        }
+      } else {
+        const current = this.#prepare(`
+          SELECT revision FROM ordarium_state_revisions
+          WHERE namespace = ? AND key = ?
+          ORDER BY revision DESC
+          LIMIT 1
+        `).get(namespace, key);
+        if (current === undefined || this.#number(current.revision) !== expectedRevision) {
+          this.#commit();
+          return false;
+        }
+      }
+      const serialized = JSON.stringify(next);
+      this.#prepare(`
+        INSERT INTO ordarium_state_revisions(namespace, key, revision, value_digest, written_at, record_json)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(next.namespace, next.key, next.revision, next.valueDigest, next.writtenAt, serialized);
+      const insertRef = this.#prepare(`
+        INSERT INTO ordarium_state_refs(ref_kind, ref_id, namespace, key, revision)
+        VALUES (?, ?, ?, ?, ?)
+      `);
+      for (const ref of next.refs) {
+        insertRef.run(ref.kind, ref.id, next.namespace, next.key, next.revision);
+      }
+      this.#commit();
+      return true;
+    } catch (error) {
+      this.#rollback();
+      throw mapSqliteFailure(error);
+    }
+  }
+
+  async stateHistory(
+    namespace: string,
+    key: string,
+    cursor?: string,
+    limit?: number,
+  ): Promise<StateRevisionPage> {
+    this.#assertOpen();
+    const after = cursor === undefined ? -1 : decodeHistoryCursor(cursor);
+    const bound = Math.max(0, limit ?? DEFAULT_PAGE_LIMIT);
+    const rows = this.#prepare(`
+      SELECT namespace, key, revision, record_json
+      FROM ordarium_state_revisions
+      WHERE namespace = ? AND key = ? AND revision > ?
+      ORDER BY revision ASC
+      LIMIT ?
+    `).all(namespace, key, after, bound + 1);
+    const revisions = rows.map((row) => this.#parseStateRecord(row));
+    const page = revisions.slice(0, bound);
+    const last = page[page.length - 1];
+    const nextCursor = revisions.length > bound && last !== undefined
+      ? encodeCursor({ r: String(last.revision) })
+      : undefined;
+    return { revisions: page, ...(nextCursor === undefined ? {} : { nextCursor }) };
+  }
+
+  async listStatesReferencing(
+    ref: StateRef,
+    cursor?: string,
+    limit?: number,
+  ): Promise<StateRecordPage> {
+    this.#assertOpen();
+    const clauses = ["f.ref_kind = ?", "f.ref_id = ?"];
+    const parameters: (number | string)[] = [ref.kind, ref.id];
+    const after = cursor === undefined ? undefined : decodeStateSubjectRevisionCursor(cursor);
+    if (after !== undefined) {
+      clauses.push("(r.namespace > ? OR (r.namespace = ? AND (r.key > ? OR (r.key = ? AND r.revision > ?))))");
+      parameters.push(after.n, after.n, after.k, after.k, after.r);
+    }
+    const bound = Math.max(0, limit ?? DEFAULT_PAGE_LIMIT);
+    const rows = this.#prepare(`
+      SELECT r.namespace, r.key, r.revision, r.record_json
+      FROM ordarium_state_refs f
+      JOIN ordarium_state_revisions r
+        ON r.namespace = f.namespace AND r.key = f.key AND r.revision = f.revision
+      WHERE ${clauses.join(" AND ")}
+      ORDER BY r.namespace ASC, r.key ASC, r.revision ASC
+      LIMIT ?
+    `).all(...parameters, bound + 1);
+    const parsed = rows.map((row) => ({ row, record: this.#parseStateRecord(row) }));
+    const records = parsed.slice(0, bound).map((entry) => entry.record);
+    const last = parsed[bound - 1];
+    const nextCursor = rows.length > bound && last !== undefined
+      ? encodeCursor({ s: `${last.row.namespace}\u0000${last.row.key}`, r: String(last.row.revision) })
+      : undefined;
+    return { records, ...(nextCursor === undefined ? {} : { nextCursor }) };
+  }
+
+  async listStates(filter: StateListFilter = {}, cursor?: string): Promise<StateRecordPage> {
+    this.#assertOpen();
+    const clauses = [
+      "(namespace, key, revision) IN (" +
+        "SELECT namespace, key, MAX(revision) FROM ordarium_state_revisions GROUP BY namespace, key)",
+    ];
+    const parameters: (number | string)[] = [];
+    if (filter.namespace !== undefined) {
+      clauses.push("namespace = ?");
+      parameters.push(filter.namespace);
+    }
+    const after = cursor === undefined ? undefined : decodeStateSubjectCursor(cursor);
+    if (after !== undefined) {
+      clauses.push("(namespace > ? OR (namespace = ? AND key > ?))");
+      parameters.push(after.n, after.n, after.k);
+    }
+    const bound = Math.max(0, filter.limit ?? DEFAULT_PAGE_LIMIT);
+    const rows = this.#prepare(`
+      SELECT namespace, key, revision, record_json
+      FROM ordarium_state_revisions
+      WHERE ${clauses.join(" AND ")}
+      ORDER BY namespace ASC, key ASC
+      LIMIT ?
+    `).all(...parameters, bound + 1);
+    const records = rows.slice(0, bound).map((row) => this.#parseStateRecord(row));
+    const lastRow = rows[bound - 1];
+    const nextCursor = rows.length > bound && lastRow !== undefined
+      ? encodeCursor({ s: `${lastRow.namespace}\u0000${lastRow.key}` })
       : undefined;
     return { records, ...(nextCursor === undefined ? {} : { nextCursor }) };
   }
@@ -401,6 +577,7 @@ export class SqliteLedger implements OperationLedger {
       CREATE INDEX IF NOT EXISTS ordarium_operations_state_idx
         ON ordarium_operations(state, updated_at DESC);
     `);
+    this.#createStateTables();
   }
 
   /**
@@ -478,6 +655,55 @@ export class SqliteLedger implements OperationLedger {
     }
   }
 
+  /**
+   * Additive v2 -> v3 migration (G11 design spec §4): the state kind only
+   * adds tables and indexes, so no existing row is touched. A failure rolls
+   * the database back to its intact v2 state.
+   */
+  #migrateFromV2(): void {
+    try {
+      this.#begin();
+      this.#createStateTables();
+      this.#database.exec(`PRAGMA user_version = ${LEDGER_SCHEMA_VERSION}`);
+      this.#commit();
+    } catch (error) {
+      this.#rollback();
+      if (error instanceof LedgerMigrationFailedError) throw error;
+      throw new LedgerMigrationFailedError(describe(error));
+    }
+  }
+
+  #createStateTables(): void {
+    this.#database.exec(`
+      CREATE TABLE IF NOT EXISTS ordarium_state_revisions (
+        namespace TEXT NOT NULL,
+        key TEXT NOT NULL,
+        revision INTEGER NOT NULL,
+        value_digest TEXT NOT NULL,
+        written_at TEXT NOT NULL,
+        record_json TEXT NOT NULL,
+        PRIMARY KEY (namespace, key, revision)
+      ) STRICT;
+
+      CREATE TABLE IF NOT EXISTS ordarium_state_refs (
+        ref_kind TEXT NOT NULL,
+        ref_id TEXT NOT NULL,
+        namespace TEXT NOT NULL,
+        key TEXT NOT NULL,
+        revision INTEGER NOT NULL,
+        PRIMARY KEY (ref_kind, ref_id, namespace, key, revision),
+        FOREIGN KEY (namespace, key, revision)
+          REFERENCES ordarium_state_revisions(namespace, key, revision)
+      ) STRICT;
+
+      CREATE INDEX IF NOT EXISTS ordarium_state_refs_ref_idx
+        ON ordarium_state_refs(ref_kind, ref_id);
+
+      CREATE INDEX IF NOT EXISTS ordarium_state_revisions_ns_idx
+        ON ordarium_state_revisions(namespace, written_at DESC);
+    `);
+  }
+
   #selectLease(operationId: string): {
     owner: string;
     fencing_token: number;
@@ -507,6 +733,29 @@ export class SqliteLedger implements OperationLedger {
       if (error instanceof LedgerCorruptError) throw error;
       throw new LedgerCorruptError();
     }
+  }
+
+  /**
+   * Decode a state row through the single core codec and verify the row
+   * columns against the decoded record, so persisted damage fails closed as
+   * LEDGER_CORRUPT instead of surfacing as altered management state.
+   */
+  #parseStateRecord(row: Record<string, unknown>): StateRecord {
+    let record: StateRecord;
+    try {
+      record = decodeStateRecord(JSON.parse(this.#string(row.record_json)));
+    } catch (error) {
+      if (error instanceof LedgerCorruptError) throw error;
+      throw new LedgerCorruptError();
+    }
+    if (
+      (row.namespace !== undefined && row.namespace !== record.namespace) ||
+      (row.key !== undefined && row.key !== record.key) ||
+      (row.revision !== undefined && row.revision !== record.revision)
+    ) {
+      throw new LedgerCorruptError();
+    }
+    return record;
   }
 
   #prepare(sql: string) {
@@ -708,4 +957,23 @@ function decodeHistoryCursor(cursor: string): number {
     throw new LedgerCorruptError();
   }
   return revision;
+}
+
+function decodeStateSubjectCursor(cursor: string): { n: string; k: string } {
+  const payload = decodeCursorPayload(cursor);
+  if (typeof payload.s !== "string") throw new LedgerCorruptError();
+  const separator = payload.s.indexOf("\u0000");
+  if (separator <= 0) throw new LedgerCorruptError();
+  return { n: payload.s.slice(0, separator), k: payload.s.slice(separator + 1) };
+}
+
+function decodeStateSubjectRevisionCursor(cursor: string): { n: string; k: string; r: number } {
+  const payload = decodeCursorPayload(cursor);
+  const revision = Number(payload.r);
+  if (typeof payload.s !== "string" || !Number.isSafeInteger(revision) || revision < 0) {
+    throw new LedgerCorruptError();
+  }
+  const separator = payload.s.indexOf("\u0000");
+  if (separator <= 0) throw new LedgerCorruptError();
+  return { n: payload.s.slice(0, separator), k: payload.s.slice(separator + 1), r: revision };
 }
