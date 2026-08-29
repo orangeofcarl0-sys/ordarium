@@ -37,6 +37,18 @@ identity 映射：`source="mcp"`、`scope=clientInfo.name`、`callId=请求 id`�
 
 ## 自建宿主（框架作者）
 
-实现 `HostInvocationPort` 合同即可接入 core，不改内核：稳定 `source/scope/callId`、正确的授权来源（不伪造人工决策）、取消 signal、输入/输出 schema 双向映射、register/dispose 生命周期、replay/并发/重启语义的真实集成测试。`@ordarium/testing` 的 `HostAdapterHarness` 是这套合同的现成 conformance 基座（见 [09](09-testing.md)）。
+实现 `HostInvocationPort` 合同即可接入 core，不改内核：稳定 `source/scope/callId`、正确的授权来源（不伪造人工决策）、取消 signal、输入/输出 schema 双向映射、register/dispose 生命周期、replay/并发/重启语义的真实集成测试。
+
+第三方宿主的一等入口是 **`@ordarium/host-kit`**（G18）：curated 适配面（port/identity/授权类型 + 错误基类）+ 构造期版本握手 + 可移植 conformance runner。
+
+```ts
+import { assertHostContract, HOST_CONTRACT_VERSION, runHostAdapterConformance } from "@ordarium/host-kit";
+
+assertHostContract(HOST_CONTRACT_VERSION);  // exact-match，不匹配即 HOST_CONTRACT_MISMATCH fail-closed
+// 装配完成后、发布前，对 scratch 账本上的 runtime 跑可移植 conformance：
+await runHostAdapterConformance(runtime, runtime.ledger);
+```
+
+`@ordarium/testing` 的 `HostAdapterHarness` 仍是这套合同的现成 conformance 基座（见 [09](09-testing.md)）。
 
 **双宿主共账**：DSH 与 host-mcp 指向同一 SQLite 时，相同业务键跨宿主汇合为单个 operation（单次执行），不同身份互不折叠——多 agent/multi-harness 共享同一份副作用事实。

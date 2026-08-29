@@ -33,6 +33,21 @@
       },
       "private": false
     },
+    "@ordarium/host-kit": {
+      "version": "1.1.0",
+      "workspaceDependencies": [
+        "@ordarium/core",
+        "@ordarium/testing"
+      ],
+      "externalDependencies": [],
+      "exports": {
+        ".": {
+          "types": "./dist/src/index.d.ts",
+          "import": "./dist/src/index.js"
+        }
+      },
+      "private": false
+    },
     "@ordarium/host-mcp": {
       "version": "1.1.0",
       "workspaceDependencies": [
@@ -98,6 +113,15 @@
       ],
       "relativeImportCount": 3
     },
+    "@ordarium/host-kit": {
+      "workspace": [
+        "@ordarium/core",
+        "@ordarium/testing"
+      ],
+      "external": [],
+      "nodeBuiltins": [],
+      "relativeImportCount": 0
+    },
     "@ordarium/host-mcp": {
       "workspace": [
         "@ordarium/core",
@@ -127,7 +151,7 @@
       ],
       "external": [],
       "nodeBuiltins": [],
-      "relativeImportCount": 2
+      "relativeImportCount": 3
     }
   },
   "errorCodes": [
@@ -136,6 +160,7 @@
     "AUTHORIZATION_CONFLICT",
     "AUTHORIZATION_REQUIRED",
     "CONTRACT_DRIFT",
+    "HOST_CONTRACT_MISMATCH",
     "IDEMPOTENCY_EXPIRED",
     "IDENTITY_REQUIRED",
     "INPUT_TOO_LARGE",

@@ -37,4 +37,5 @@ export declare class HostAdapterHarness {
 }
 export * from "./provider.js";
 export * from "./stateLedger.js";
+export * from "./hostConformance.js";
 //# sourceMappingURL=index.d.ts.map

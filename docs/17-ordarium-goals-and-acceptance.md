@@ -797,6 +797,10 @@ G16 触发条件"随时"满足，2026-08-29 会话决议解除休眠并实施完
 
 休眠触发预测：判据①的实施预期同时唤醒 G14 与 G17（§16.8）——2026-08-29 复盘：telemetry 试点未触达 scope 面与 refs（PLMP-ALN-1 r3），两 Goal 仍未唤醒，预测保持。
 
+## 16.10 G18（G8 第 4 项激活）：versioned Host Adapter 叶包
+
+依据 `ordarium/evidence/G18/design-spec.md`（2026-08-29 会话决议：新叶包形态 + 手写 `HOST_CONTRACT_VERSION` 常量 + 冻结并即席实施）。G8 前置"Palimpsest Runtime 稳定重构后"经同日审计确认满足（姊妹仓 H1 交付、治理上链、32 文件/173 测试全绿；`COMPAT-PAL-001` 移除条件"真实需求出现时重审"到来）。交付物：core 的 `HOST_CONTRACT_VERSION`/`assertHostContract`/`HostContractMismatchError`（错误码 `HOST_CONTRACT_MISMATCH`，exact-match fail-closed，宿主可见合同语义变化时 +1 并在 docs/13/docs/18 记录修订）；testing 的 `runHostAdapterConformance`（四场景可移植宿主 conformance，`runStateLedgerConformance` 同款框架不可知纪律）；新叶包 `@ordarium/host-kit`（curated 适配面 + 版本协商 + runner re-export；root façade 零漂移，架构门叶包规则扩一档：叶包可依赖 conformance kit）。验收 G18-A01–A05 见该 spec §3；首宿主案例（Palimpsest 跑 runner）由姊妹仓按其升级协议登记，PLMP-ALN-1 诉求②自交付起转为"待消费者接入"。
+
 ## 17. 首发端到端验收矩阵
 
 | 领域 | 必测场景 | 主要 Goal | 核心断言 |

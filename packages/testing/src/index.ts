@@ -116,3 +116,4 @@ export class HostAdapterHarness {
 }
 export * from "./provider.js";
 export * from "./stateLedger.js";
+export * from "./hostConformance.js";

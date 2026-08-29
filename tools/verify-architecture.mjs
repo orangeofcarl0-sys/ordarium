@@ -33,10 +33,12 @@ const expectedPackages = {
 };
 
 // Host adapter leaf packages (G5 design spec §4): they may carry a host
-// protocol surface and depend only on the kernel and the default ledger.
-// Kernel packages may never depend on them.
+// protocol surface and depend only on the kernel, the default ledger or the
+// conformance kit (@ordarium/testing — G18 host-kit is the only leaf granted
+// that edge). Kernel packages may never depend on them.
 const leafPackageRules = {
   "@ordarium/host-mcp": { workspaceDeps: ["@ordarium/core", "@ordarium/ledger-sqlite"] },
+  "@ordarium/host-kit": { workspaceDeps: ["@ordarium/core", "@ordarium/testing"] },
 };
 
 function packageRule(name) {

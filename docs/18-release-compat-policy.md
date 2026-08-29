@@ -40,7 +40,7 @@
 ## 4. 案例引用
 
 - 首个深度消费者 **Palimpsest**（DSH 编排插件）已按 §2 建立对齐账：其仓库 `docs/engineering/07-ordarium-alignment.md`（演进接口清单 + 升级协议 + 诉求登记），为本核对单的首个完整实例。
-- versioned Host Adapter（`COMPAT-PAL-001` 缝）交付时的首宿主 conformance 案例候选同为 Palimpsest；形状评审见 docs/17 Goal 线。
+- versioned Host Adapter（`COMPAT-PAL-001` 缝）交付时的首宿主 conformance 案例候选同为 Palimpsest；形状评审见 docs/17 Goal 线。——**已交付（G18，2026-08-29）**：`@ordarium/host-kit`（版本握手 + curated 适配面 + `runHostAdapterConformance`），案例协议见 docs/dev/08 与 docs/17 §16.10；姊妹仓接入后由其升级协议登记。
 
 ## 修订流水
 

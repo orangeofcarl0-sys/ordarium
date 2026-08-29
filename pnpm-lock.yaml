@@ -29,6 +29,15 @@ importers:
         specifier: workspace:*
         version: link:../ledger-sqlite
 
+  packages/host-kit:
+    dependencies:
+      '@ordarium/core':
+        specifier: workspace:*
+        version: link:../core
+      '@ordarium/testing':
+        specifier: workspace:*
+        version: link:../testing
+
   packages/host-mcp:
     dependencies:
       '@ordarium/core':
@@ -44,6 +53,9 @@ importers:
       '@ordarium/dsh':
         specifier: workspace:*
         version: link:../dsh
+      '@ordarium/testing':
+        specifier: workspace:*
+        version: link:../testing
 
   packages/ledger-sqlite:
     dependencies:

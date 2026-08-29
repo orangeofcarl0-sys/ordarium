@@ -268,6 +268,8 @@ DSH schema/admission/guards
 
 Ordarium 不注册自己的 Agent Loop，也不绕过 `tools/execute` wrapper。其他宿主只要能提供稳定 `source/scope/callId`、AbortSignal、分类后的 authorization evidence 和 ToolDefinition 映射，就可以复用 `@ordarium/core`。
 
+宿主适配以 `@ordarium/host-kit` 为一等入口（G18）：接入时以 `assertHostContract(HOST_CONTRACT_VERSION)` 做 exact-match 版本握手，不匹配即 `HOST_CONTRACT_MISMATCH` fail-closed——不设多版本容忍。`HOST_CONTRACT_VERSION` 仅在宿主可见合同语义变化（port 形状/语义、宿主可见错误族承诺、宿主侧构造面默认值）时 bump，每次 bump 在本节与 docs/18 记录修订。
+
 DSH tool arguments 必须是 object JSON Schema，因此 `asDshTool()` 会拒绝 primitive input schema；core 本身仍允许 primitive Action，供非 DSH 宿主或内部组合使用。
 
 Subagent 是否需要 Ordarium 取决于副作用路径，而不是“是否叫 subagent”：同进程或远程 subagent 只要最终可能重投同一副作用 Action，就应传播 root identity，并在副作用边界使用 Ordarium；纯推理 subagent 不需要。

@@ -1,6 +1,20 @@
 import type { Action } from "./action.js";
 import type { JsonValue } from "./json.js";
+import { OrdariumError } from "./errors.js";
 import type { AuthorizationDecision, InvocationIdentity, ProviderPrincipalRef } from "./types.js";
+/**
+ * Generation of the host-facing contract: the HostInvocationPort shape, port
+ * semantics, host-visible error-family promises and host-side construction
+ * defaults. Bumped only when one of those changes; each bump is recorded in
+ * docs/13 and docs/18. Host adapters assert the version they were built
+ * against — exact match, fail-closed. A tolerated mismatch would be a
+ * compatibility layer, so none is provided.
+ */
+export declare const HOST_CONTRACT_VERSION = 1;
+export declare class HostContractMismatchError extends OrdariumError {
+    constructor(expected: number, actual: number);
+}
+export declare function assertHostContract(version: number): void;
 /**
  * The frozen boundary a host adapter uses to enter @ordarium/core
  * (ARCH-3 decision 8). Hosts must provide stable invocation identity;

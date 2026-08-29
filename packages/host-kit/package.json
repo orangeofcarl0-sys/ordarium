@@ -1,7 +1,7 @@
 {
-  "name": "@ordarium/host-mcp",
+  "name": "@ordarium/host-kit",
   "version": "1.1.0",
-  "description": "Model Context Protocol host adapter exposing Ordarium Safe Actions as MCP tools",
+  "description": "Versioned host adapter kit: contract handshake, curated port surface and the portable host conformance runner",
   "private": false,
   "type": "module",
   "main": "./dist/src/index.js",
@@ -12,17 +12,12 @@
       "import": "./dist/src/index.js"
     }
   },
-  "engines": {
-    "node": ">=24.15.0"
-  },
   "dependencies": {
     "@ordarium/core": "workspace:*",
-    "@ordarium/ledger-sqlite": "workspace:*"
-  },
-  "devDependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0",
-    "@ordarium/dsh": "workspace:*",
     "@ordarium/testing": "workspace:*"
+  },
+  "engines": {
+    "node": ">=24.0.0"
   },
   "license": "MIT",
   "files": [

@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  HostContractMismatchError,
+  HOST_CONTRACT_VERSION,
   IdentityRequiredError,
   MemoryLedger,
   OrdariumRuntime,
+  assertHostContract,
   defineAction,
   defineSchema,
   effects,
@@ -90,5 +93,28 @@ describe("HostInvocationPort", () => {
     await expect(port.invoke(action, "work", invocation)).resolves.toBe("done:work");
     expect(executions).toBe(1);
     expect((await runtime.ledger.list()).records).toHaveLength(1);
+  });
+});
+
+describe("host contract version", () => {
+  it("passes on the current contract generation", () => {
+    expect(() => assertHostContract(HOST_CONTRACT_VERSION)).not.toThrow();
+  });
+
+  it("fails closed with HOST_CONTRACT_MISMATCH on any mismatch", () => {
+    try {
+      assertHostContract(HOST_CONTRACT_VERSION + 1);
+      expect.unreachable("assertHostContract must throw on a mismatch");
+    } catch (error) {
+      expect(error).toBeInstanceOf(HostContractMismatchError);
+      expect((error as HostContractMismatchError).code).toBe("HOST_CONTRACT_MISMATCH");
+      expect((error as Error).message).toContain(`v${HOST_CONTRACT_VERSION}`);
+    }
+    try {
+      assertHostContract(HOST_CONTRACT_VERSION - 1);
+      expect.unreachable("assertHostContract must throw on a mismatch");
+    } catch (error) {
+      expect((error as HostContractMismatchError).code).toBe("HOST_CONTRACT_MISMATCH");
+    }
   });
 });

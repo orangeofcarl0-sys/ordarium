@@ -64,6 +64,12 @@
 | `LEDGER_CLOSED` | 已关闭后使用 | 编程错误 |
 | `LEDGER_FULL` | 存储耗尽 | dispatch 前会停止；dispatch 后保留未知并要求维护 |
 
+## 宿主合同版本
+
+| code | 含义 | 调用者动作 |
+|---|---|---|
+| `HOST_CONTRACT_MISMATCH` | 宿主适配声明的合同版本与内核 `HOST_CONTRACT_VERSION` 不一致（`assertHostContract`，exact-match） | 按 docs/18 核对单升级 `@ordarium/*` pins 至对齐版本并重跑 conformance；不得绕过断言 |
+
 ## 测试专用
 
 `SIMULATED_PROCESS_CRASH`——仅测试夹具使用，模拟进程崩溃。
