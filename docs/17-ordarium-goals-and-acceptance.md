@@ -788,14 +788,14 @@ G16 触发条件"随时"满足，2026-08-29 会话决议解除休眠并实施完
 
 | 判据 / 里程碑 | 当前状态 | 闭合条件 | 载体 |
 |---|---|---|---|
-| 命题二① ≥2 非自建宿主真实共账 | 载体就位 | Palimpsest 完成 state kind 迁移 + `OPERATION_UNCERTAIN` 接缝焊接 | 姊妹仓 palimpsest-repo（§16.6 姊妹里程碑） |
-| 命题二② 真实恢复案例成文 | 未发生 | 接缝焊接后首个真实 uncertain→reconcile 案例按宿主职责成文 | 同上 |
+| 命题二① ≥2 非自建宿主真实共账 | **证据齐备**（2026-08-29 审计，闭合裁决待会话） | Palimpsest 完成 state kind 迁移 + `OPERATION_UNCERTAIN` 接缝焊接——审计确认两项均已落地：uncertain→reconcile 全协议消费（query-first、uncertain 落 blocked 不伪造判定）、管理型消费边界按最小消费裁决落地 | 姊妹仓 PLMP-ALN-1 r2/r3：`src/effects/promotion.ts` + `src/recovery/`（Crash A/B）、telemetry 外置试点（PLMP-TLM-1）、运行时 32 文件/173 测试全绿 |
+| 命题二② 真实恢复案例成文 | **已成文**（注入式口径；生产首例待积） | 生产环境首例真实恢复案例成文 | 姊妹仓 SDS `03`（晋升合并 reconcilable、INV-09/10、P1 出口）+ `promotion.ts` 头注（Crash A/B 全协议） |
 | 命题二③ conformance 外部使用者 | 零 | 外部仓库引用 `runOperationLedgerConformance` / `runStateLedgerConformance` | 发布后可见性动作 |
 | 命题二④ swarm 并发压测 | **已交付**（G12 口径） | ——（G15 承接规模升级触发器） | `evidence/G12/` |
 | 命题二⑤ 第二领域嵌入 | 未发生 | 非相邻域宿主真实嵌入并成文 | 发布后可见性动作 |
-| 命题三 路径四步 | 前提齐备 | push/tag/Release（用户交接）→ ① → ③ → 公开恢复案例 → 第三方引用 | docs/18 发布纪律 |
+| 命题三 路径四步 | **第一步已兑现**（2026-08-29）：`ordarium-v1.1.0` 已发布（tag 落 `c874985`），姊妹仓按 docs/18 核对单完成消费 bump | ①闭合裁决 → ③ conformance 外部引用 → 公开恢复案例 → 第三方引用 | docs/18 发布纪律；姊妹仓 PLMP-ALN-1 升级协议 |
 
-休眠触发预测：判据①的实施预期同时唤醒 G14 与 G17（§16.8）。
+休眠触发预测：判据①的实施预期同时唤醒 G14 与 G17（§16.8）——2026-08-29 复盘：telemetry 试点未触达 scope 面与 refs（PLMP-ALN-1 r3），两 Goal 仍未唤醒，预测保持。
 
 ## 17. 首发端到端验收矩阵
 

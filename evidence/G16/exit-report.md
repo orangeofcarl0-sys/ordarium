@@ -55,6 +55,6 @@ MATRIX_LEG_OK × 2，runner 退出码 0
 
 ## 4. 未完成项
 
-- git push、`ordarium-v1.1.0` tag 与 GitHub Release（附五包 tarball）仍由用户执行——与本 Goal 无耦合的既有交接项。
+- git push、`ordarium-v1.1.0` tag 与 GitHub Release（附五包 tarball）仍由用户执行——与本 Goal 无耦合的既有交接项。——**【更新】已兑现（2026-08-29）**：tag `ordarium-v1.1.0` 已发布（指向 `c874985`，六门 `verify:release` 绿、release notes 含 docs/18 五类行为变化清单）；姊妹仓已按其升级协议完成消费 bump（PLMP-ALN-1 r2）。
 - `verify:matrix`（Docker 矩阵）已在本机复跑全绿（§3，Docker 29.7.2 双腿）：本次复跑如实兑现披露并**暴露修复三处缺陷**，均随本提交闭合——(1) `packages/ledger-sqlite/tsconfig.json` 缺 `../testing` project reference（G11 引入的全仓唯一跨包测试导入，宿主因存量 dist 掩盖假绿，容器干净构建 TS2307）；(2) A01' 第二重竞态（视界 vs 持锁刀锋边缘，见 §1 A01' 行）；(3) 矩阵内层脚本缺 `pipefail`，vitest 经 `tail` 管道后红套件仍打印 `MATRIX_LEG_OK` 假绿（`set -eo pipefail` 修复）。
 - G13/G14/G15 依各自触发条件继续休眠（docs/17 §16.8）。

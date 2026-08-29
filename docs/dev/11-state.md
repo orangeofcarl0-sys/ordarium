@@ -31,6 +31,10 @@ await state.write({
 
 每次写入都会：校验身份与 subject 命名 → 记录写者溯源（`identity`）→ 校验引用存在性 → 以 revision CAS 落一条 append-only 修订。value 与 receipt 同规格：JSON 安全载荷、1 MiB 上限，账本只存摘要与安全内容。
 
+## 负载形状：覆盖式槽位 vs append-only 主体（首消费者反馈）
+
+覆盖式 CAS 槽位适合"计划/意图"这类**终值语义**——读最新修订即全部真相。首个深度消费（PLMP-TLM-1，Palimpsest telemetry 外置）给出了计数器类负载的另一形状：每样本一条 append-only 主体（`key: "delta-<uuid>"`，`expectedRevision: 0` 创建后**不改写**），读取用 `state.list(namespace)` 聚合装载——CAS 冲突面归零，修订史即数据本身。选型口径：要"当前值 + 修订史"用槽位；要"只增不减的事件序列"用 append-only 主体。
+
 ## 并发：乐观 CAS，没有锁
 
 写门槛由身份 + 授权证据表达（默认宿主准入）；仲裁全部交给 revision CAS——`expectedRevision` 不匹配即 `STATE_REVISION_CONFLICT`。没有 lease/fence：单写者纪律是宿主的调度策略（如一次一事件的确定性调度器），不是内核机制。
