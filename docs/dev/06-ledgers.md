@@ -48,5 +48,6 @@ const runtime = new OrdariumRuntime({ allowVolatileLedger: true });
 
 - 无自动 GC：terminal operation 不自动删除——删除会重新打开重复副作用的窗口；
 - 备份活跃库需先 `PRAGMA wal_checkpoint(TRUNCATE)` 或关闭全部连接（CI 中验证）；
-- 打开旧 v1 库会**自动事务性迁移**到 v2（失败回滚，库保持完整 v1）；
+- 打开旧 v1/v2 库会沿迁移链**自动事务性迁移**到当前库 schema（v3；失败回滚，库保持完整旧版）；
+- 并发 open 撞写锁由构造器**内置有界退避**吸收：默认 5 次 × 100ms（最坏约 400ms 后抛 `LEDGER_BUSY`），仅对 BUSY 重试——corrupt/更新 schema 等错误照旧一次性 fail-closed；`openRetry: { attempts: 1 }` 可退回即失败语义；
 - 恢复旧备份可能丢失备份点之后的 operation 身份——恢复后先与 Provider 事实 reconcile 再恢复执行。

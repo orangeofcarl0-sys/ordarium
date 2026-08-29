@@ -37,6 +37,8 @@ const workerId = Number(args.id ?? 0);
 
 // Opening a hot ledger can hit the writer lock (stable LEDGER_BUSY before any
 // handle exists); a joining host retries with backoff. Recorded as a finding.
+// Since G16 the constructor itself carries a default bounded backoff, so this
+// G12-era wrapper only matters if that built-in retry is already exhausted.
 async function openLedgerWithRetry(path, attempts = 10) {
   let lastError;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -62,7 +64,11 @@ async function withBusyTolerance(fn) {
   }
 }
 
-const ledger = await openLedgerWithRetry(dbPath);
+// The open-probe calls the constructor bare: G16's built-in bounded backoff
+// IS the mechanism under test, so the outer retry wrapper must not mask it.
+const ledger = mode === "open-probe"
+  ? new SqliteLedger(dbPath)
+  : await openLedgerWithRetry(dbPath);
 const identity = {
   source: "stress",
   scope: "g12",
@@ -88,7 +94,11 @@ function recordLatency(ns) {
 
 const deadline = Date.now() + durationMs;
 
-if (mode === "state-shared" || mode === "state-own") {
+if (mode === "open-probe") {
+  // G16-A01 probe: the constructor call above IS the test - a process
+  // opening the contended ledger with the default bounded backoff. No
+  // stress loop runs; the shared exit below prints the probe line.
+} else if (mode === "state-shared" || mode === "state-own") {
   const subjectKey = mode === "state-shared" ? "shared" : `own-${workerId}`;
   let knownRevision = 0;
   // state-own never contends; seed from the ledger so the same loop shape runs.
@@ -202,10 +212,14 @@ if (mode === "state-shared" || mode === "state-own") {
 
 ledger.close();
 
-result.p50 = percentile(result.successLatencies.sort((a, b) => a - b), 50) / 1e6;
-result.p95 = percentile(result.successLatencies.sort((a, b) => a - b), 95) / 1e6;
-result.p99 = percentile(result.successLatencies.sort((a, b) => a - b), 99) / 1e6;
-result.max = (result.successLatencies.at(-1) ?? 0) / 1e6;
-delete result.successLatencies;
-
-process.stdout.write(`${JSON.stringify(result)}\n`);
+if (mode === "open-probe") {
+  // Exactly one stdout line per worker; the parent parses the last line.
+  process.stdout.write(`${JSON.stringify({ mode, workerId, opened: true })}\n`);
+} else {
+  result.p50 = percentile(result.successLatencies.sort((a, b) => a - b), 50) / 1e6;
+  result.p95 = percentile(result.successLatencies.sort((a, b) => a - b), 95) / 1e6;
+  result.p99 = percentile(result.successLatencies.sort((a, b) => a - b), 99) / 1e6;
+  result.max = (result.successLatencies.at(-1) ?? 0) / 1e6;
+  delete result.successLatencies;
+  process.stdout.write(`${JSON.stringify(result)}\n`);
+}

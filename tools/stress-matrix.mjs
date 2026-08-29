@@ -28,7 +28,62 @@ const { decodeOperationRecord } = await import(
   pathToFileURL(join(ROOT, "packages", "core", "dist", "src", "index.js")).href
 );
 
-function runWorker(workerId, mode, dbPath) {
+// G16-A01 open race (evidence/G16/design-spec.md §3): every process spawns
+// in the same tick against a nonexistent database - writers keep hammering
+// the single-writer lock while openers race schema creation and hot writes
+// with the default bounded backoff. This is exactly the window where the
+// G12 open race surfaced constructor LEDGER_BUSY. Every opener must succeed
+// and the writers must keep their no-lost-update invariant.
+async function runOpenRace() {
+  const OPEN_RACE_WRITERS = 4;
+  const OPEN_RACE_OPENERS = 6;
+  const OPEN_RACE_DURATION = 3_000;
+  const workdir = mkdtempSync(join(tmpdir(), "ordarium-g16-open-"));
+  const dbPath = join(workdir, "operations.sqlite");
+  try {
+    const writers = Array.from({ length: OPEN_RACE_WRITERS }, (_, id) =>
+      runWorker(id, "state-shared", dbPath, OPEN_RACE_DURATION));
+    const openers = [];
+    for (let id = 0; id < OPEN_RACE_OPENERS; id += 1) {
+      openers.push(runWorker(id, "open-probe", dbPath));
+    }
+    const writerResults = await Promise.all(writers);
+    const openerResults = await Promise.all(openers);
+
+    const ledger = new SqliteLedger(dbPath);
+    let finalRevision;
+    try {
+      finalRevision = (await ledger.getState("stress", "shared"))?.revision ?? 0;
+    } finally {
+      ledger.close();
+    }
+    const totalSuccesses = writerResults.reduce((sum, worker) => sum + worker.successes, 0);
+    const opened = openerResults.filter((result) => result.opened === true).length;
+    const summary = {
+      writers: OPEN_RACE_WRITERS,
+      openers: OPEN_RACE_OPENERS,
+      writerSuccesses: totalSuccesses,
+      noLostUpdate: finalRevision === totalSuccesses,
+      openersOpened: opened,
+      allOpenersSucceeded: opened === OPEN_RACE_OPENERS,
+    };
+    writeFileSync(
+      join(ROOT, "evidence", "G16", "open-race-results.json"),
+      `${JSON.stringify(summary, null, 2)}\n`,
+    );
+    return `open race: ${JSON.stringify(summary)}\n`;
+  } finally {
+    rmSync(workdir, { recursive: true, force: true });
+  }
+}
+
+if (process.argv.includes("--open-race")) {
+  const summary = await runOpenRace();
+  await new Promise((resolveFlush) => process.stdout.write(summary, () => resolveFlush()));
+  process.exit(0);
+}
+
+function runWorker(workerId, mode, dbPath, duration = DURATION) {
   return new Promise((resolveWorker, rejectWorker) => {
     const child = spawn(
       process.execPath,
@@ -36,7 +91,7 @@ function runWorker(workerId, mode, dbPath) {
         join(HERE, "stress-worker.mjs"),
         "--db", dbPath,
         "--mode", mode,
-        "--duration", String(DURATION),
+        "--duration", String(duration),
         "--id", String(workerId),
       ],
       { stdio: ["ignore", "pipe", "pipe"] },

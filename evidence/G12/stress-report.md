@@ -39,6 +39,7 @@
 ## 4. 两条附带发现(harness 开发过程中的实证)
 
 1. **打开竞态**:高 K 下,新进程在热写循环中 open 同一库,构造期的 `PRAGMA journal_mode=WAL` 可能撞写锁 → 构造器抛 `LEDGER_BUSY`(稳定错误码,fail-closed,零句柄)。语义正确,但**宿主应带退避重试 open**——harness 已内置(10 次 × 100ms);内核侧是否内置 open 重试是后续独立决议项(改动面:`SqliteLedger` 构造器,B 类)。
+   **【G16 更新】**该决议项已落地:构造器默认内置有界退避(5 次 × 100ms,仅 BUSY),本发现所述场景由内核自行吸收;并发 open 赛跑实证见 `evidence/G16/open-race-results.json`(4 热写 + 6 opener 同 tick 抢新建库,全部在退避内打开成功,无丢失更新)。
 2. **fence 校验的实战验证**:harness 最初用 claim 之前的记录作终态基底,`lastFencingToken: 0` ≠ 租约 token,`compareAndSet` 被 fence 检查如实拒绝——过期 token 写入被拒是 G2 fence 合同在多进程竞争下的又一次实证。
 
 ## 5. 承袭披露

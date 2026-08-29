@@ -1,7 +1,20 @@
 import { type ClaimRequest, type LiveLease, type OperationEventPage, type OperationLedger, type OperationListFilter, type OperationPage, type OperationRecord, type StateListFilter, type StateRecord, type StateRecordPage, type StateRef, type StateRevisionPage } from "@ordarium/core";
+export interface SqliteLedgerOpenRetry {
+    /** Total attempts including the first; 1 restores fail-fast. Default 5. */
+    attempts?: number | undefined;
+    /** Fixed delay between attempts in milliseconds. Default 100. */
+    delayMs?: number | undefined;
+}
 export interface SqliteLedgerOptions {
     timeoutMs?: number | undefined;
     clock?: (() => Date) | undefined;
+    /**
+     * Open-boundary retry (G16): only LEDGER_BUSY failures (including a busy
+     * migration segment) are retried with a fixed delay; corruption, newer
+     * schema and migration-failure errors fail closed exactly once. Defaults
+     * to { attempts: 5, delayMs: 100 }.
+     */
+    openRetry?: SqliteLedgerOpenRetry | undefined;
 }
 /**
  * Crash-durable SQLite reference ledger implementing the full v2 port

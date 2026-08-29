@@ -10,6 +10,7 @@ import {
   LedgerMigrationFailedError,
   LedgerNewerSchemaError,
   LedgerOpenFailedError,
+  OrdariumError,
   decodeOperationRecord,
   decodeStateRecord,
   type ClaimRequest,
@@ -31,9 +32,23 @@ const APPLICATION_ID = 0x4f524441; // ASCII "ORDA"
 const LEDGER_SCHEMA_VERSION = 3;
 const DEFAULT_PAGE_LIMIT = 100;
 
+export interface SqliteLedgerOpenRetry {
+  /** Total attempts including the first; 1 restores fail-fast. Default 5. */
+  attempts?: number | undefined;
+  /** Fixed delay between attempts in milliseconds. Default 100. */
+  delayMs?: number | undefined;
+}
+
 export interface SqliteLedgerOptions {
   timeoutMs?: number | undefined;
   clock?: (() => Date) | undefined;
+  /**
+   * Open-boundary retry (G16): only LEDGER_BUSY failures (including a busy
+   * migration segment) are retried with a fixed delay; corruption, newer
+   * schema and migration-failure errors fail closed exactly once. Defaults
+   * to { attempts: 5, delayMs: 100 }.
+   */
+  openRetry?: SqliteLedgerOpenRetry | undefined;
 }
 
 /**
@@ -63,46 +78,53 @@ export class SqliteLedger implements OperationLedger {
   constructor(path: string, options: SqliteLedgerOptions = {}) {
     this.#clock = options.clock ?? (() => new Date());
     this.path = path === ":memory:" ? path : resolve(path);
-    try {
-      if (this.path !== ":memory:") {
-        mkdirSync(dirname(this.path), { recursive: true });
+    const retry = resolveOpenRetry(options.openRetry);
+    for (let attempt = 1; ; attempt += 1) {
+      let database: DatabaseSync | undefined;
+      try {
+        if (this.path !== ":memory:") {
+          mkdirSync(dirname(this.path), { recursive: true });
+        }
+        database = new DatabaseSync(this.path, {
+          timeout: options.timeoutMs ?? 5_000,
+          enableForeignKeyConstraints: true,
+        });
+        this.#database = database;
+        this.#database.exec("PRAGMA journal_mode = WAL");
+        this.#database.exec("PRAGMA synchronous = FULL");
+        const applicationId = this.#pragmaNumber("application_id");
+        if (applicationId !== 0 && applicationId !== APPLICATION_ID) {
+          throw new LedgerOpenFailedError("the file belongs to another application");
+        }
+        const schemaVersion = this.#pragmaNumber("user_version");
+        if (schemaVersion > LEDGER_SCHEMA_VERSION) {
+          throw new LedgerNewerSchemaError(schemaVersion);
+        }
+        if (applicationId === 0) this.#database.exec(`PRAGMA application_id = ${APPLICATION_ID}`);
+        if (schemaVersion === 0) {
+          this.#createSchema();
+          this.#database.exec(`PRAGMA user_version = ${LEDGER_SCHEMA_VERSION}`);
+        } else if (schemaVersion === 1) {
+          this.#migrateFromV1();
+        } else if (schemaVersion === 2) {
+          this.#migrateFromV2();
+        }
+        return;
+      } catch (error) {
+        // Only the BUSY family crosses attempt boundaries; every other open
+        // failure keeps its single-shot fail-closed semantics (G16 spec §1).
+        const mapped = error instanceof OrdariumError ? error : mapSqliteFailure(error);
+        try {
+          database?.close();
+        } catch {
+          // The failed handle is discarded either way.
+        }
+        if (!(mapped instanceof LedgerBusyError) || attempt >= retry.attempts) {
+          this.#closed = true;
+          throw mapped;
+        }
       }
-      this.#database = new DatabaseSync(this.path, {
-        timeout: options.timeoutMs ?? 5_000,
-        enableForeignKeyConstraints: true,
-      });
-      this.#database.exec("PRAGMA journal_mode = WAL");
-      this.#database.exec("PRAGMA synchronous = FULL");
-    } catch (error) {
-      throw mapSqliteFailure(error);
-    }
-
-    const applicationId = this.#pragmaNumber("application_id");
-    if (applicationId !== 0 && applicationId !== APPLICATION_ID) {
-      this.#closeSilently();
-      throw new LedgerOpenFailedError("the file belongs to another application");
-    }
-    const schemaVersion = this.#pragmaNumber("user_version");
-    if (schemaVersion > LEDGER_SCHEMA_VERSION) {
-      this.#closeSilently();
-      throw new LedgerNewerSchemaError(schemaVersion);
-    }
-    try {
-      if (applicationId === 0) this.#database.exec(`PRAGMA application_id = ${APPLICATION_ID}`);
-      if (schemaVersion === 0) {
-        this.#createSchema();
-        this.#database.exec(`PRAGMA user_version = ${LEDGER_SCHEMA_VERSION}`);
-      } else if (schemaVersion === 1) {
-        this.#migrateFromV1();
-      } else if (schemaVersion === 2) {
-        this.#migrateFromV2();
-      }
-    } catch (error) {
-      this.#closeSilently();
-      if (error instanceof LedgerNewerSchemaError || error instanceof LedgerMigrationFailedError) {
-        throw error;
-      }
-      throw new LedgerMigrationFailedError(describe(error));
+      sleepSync(retry.delayMs);
     }
   }
 
@@ -650,7 +672,14 @@ export class SqliteLedger implements OperationLedger {
       this.#commit();
     } catch (error) {
       this.#rollback();
-      if (error instanceof LedgerMigrationFailedError) throw error;
+      const mapped = error instanceof OrdariumError ? error : mapSqliteFailure(error);
+      if (
+        mapped instanceof LedgerBusyError ||
+        mapped instanceof LedgerNewerSchemaError ||
+        mapped instanceof LedgerMigrationFailedError
+      ) {
+        throw mapped;
+      }
       throw new LedgerMigrationFailedError(describe(error));
     }
   }
@@ -668,7 +697,14 @@ export class SqliteLedger implements OperationLedger {
       this.#commit();
     } catch (error) {
       this.#rollback();
-      if (error instanceof LedgerMigrationFailedError) throw error;
+      const mapped = error instanceof OrdariumError ? error : mapSqliteFailure(error);
+      if (
+        mapped instanceof LedgerBusyError ||
+        mapped instanceof LedgerNewerSchemaError ||
+        mapped instanceof LedgerMigrationFailedError
+      ) {
+        throw mapped;
+      }
       throw new LedgerMigrationFailedError(describe(error));
     }
   }
@@ -798,15 +834,6 @@ export class SqliteLedger implements OperationLedger {
     }
   }
 
-  #closeSilently(): void {
-    try {
-      this.#database.close();
-    } catch {
-      // Already closing after a hard failure.
-    }
-    this.#closed = true;
-  }
-
   #assertOpen(): void {
     if (this.#closed) {
       throw new LedgerClosedError();
@@ -908,20 +935,63 @@ function assertV1Record(v1: Record<string, unknown>): void {
   }
 }
 
+function resolveOpenRetry(
+  openRetry: SqliteLedgerOpenRetry | undefined,
+): { attempts: number; delayMs: number } {
+  if (openRetry === undefined) return { attempts: 5, delayMs: 100 };
+  if (typeof openRetry !== "object" || Array.isArray(openRetry)) {
+    throw new TypeError("openRetry must be an object");
+  }
+  const attempts = openRetry.attempts ?? 5;
+  const delayMs = openRetry.delayMs ?? 100;
+  if (!Number.isSafeInteger(attempts) || attempts < 1) {
+    throw new TypeError("openRetry.attempts must be a safe integer >= 1");
+  }
+  if (!Number.isSafeInteger(delayMs) || delayMs < 0) {
+    throw new TypeError("openRetry.delayMs must be a safe integer >= 0");
+  }
+  return { attempts, delayMs };
+}
+
+function sleepSync(ms: number): void {
+  if (ms === 0) return;
+  try {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  } catch {
+    const deadline = Date.now() + ms;
+    while (Date.now() < deadline) {
+      // Bounded spin fallback for runtimes that disallow Atomics.wait.
+    }
+  }
+}
+
 function mapSqliteFailure(error: unknown): Error {
   const code = (error as { code?: string }).code ?? "";
+  const errstr = (error as { errstr?: string }).errstr ?? "";
   const message = error instanceof Error ? error.message : String(error);
   if (
     code.includes("SQLITE_BUSY") ||
     code.includes("SQLITE_LOCKED") ||
+    errstr.includes("SQLITE_BUSY") ||
+    errstr.includes("SQLITE_LOCKED") ||
     /database is locked|database table is locked/iu.test(message)
   ) {
     return new LedgerBusyError();
   }
-  if (code.includes("SQLITE_CORRUPT") || code.includes("SQLITE_NOTADB") || /malformed/iu.test(message)) {
+  if (
+    code.includes("SQLITE_CORRUPT") ||
+    code.includes("SQLITE_NOTADB") ||
+    errstr.includes("SQLITE_CORRUPT") ||
+    errstr.includes("SQLITE_NOTADB") ||
+    /malformed|file is not a database/iu.test(message)
+  ) {
     return new LedgerCorruptError();
   }
-  if (code.includes("SQLITE_FULL") || /database or disk is full/iu.test(message)) {
+  if (
+    code.includes("SQLITE_FULL") ||
+    errstr.includes("SQLITE_FULL") ||
+    /database or disk is full/iu.test(message)
+  ) {
     return new LedgerFullError();
   }
   return error instanceof Error ? error : new Error(message);

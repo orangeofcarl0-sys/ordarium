@@ -18,7 +18,7 @@
 
 - 单写者天花板本机口径 **~1400 成功写/s**,K=1..8 聚合吞吐持平、p50 稳定(0.7ms 级),代价集中在尾延迟(K≥4 的 max 达秒级,受 busy_timeout 5s 上界保护);
 - 最大争用下 CAS 冲突率 ≤0.75%,无丢失更新——G2 revision CAS 与 fence 合同在多进程热争用下的直接实证;
-- 两条附带发现:热库打开竞态(`LEDGER_BUSY`,宿主应退避重试;内核内置 open 重试待独立决议)、fence 拒绝过期 token 终态写(harness 开发中无意实证)。
+- 两条附带发现:热库打开竞态(`LEDGER_BUSY`,宿主应退避重试;内核内置 open 重试待独立决议——**【G16 更新】已决议并落地**:`SqliteLedger` 构造器默认内置有界退避,见 `evidence/G16/exit-report.md`)、fence 拒绝过期 token 终态写(harness 开发中无意实证)。
 
 ## 3. 最终命令与输出
 
@@ -31,5 +31,5 @@ pnpm verify:architecture  → passed(零包变更,快照零漂移)
 ## 4. 未完成项
 
 - `verify:matrix`(Docker)仍待有 Docker 宿主的环境复跑(G11/G12 同一遗留项);
-- 内核侧 open 重试(`SqliteLedger` 构造器退避)是潜在 B 类小 Goal,待决议;
+- 内核侧 open 重试(`SqliteLedger` 构造器退避)是潜在 B 类小 Goal,待决议——**【G16 更新】已完成**(2026-08-29,`evidence/G16/exit-report.md`);
 - 分片/排队 v2 的触发刻度已由本数据给出口径:目标吞吐超 ~1400 写/s 或 p99 秒级不可接受时启动。
