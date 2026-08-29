@@ -19,7 +19,9 @@ const images = process.argv.length > 2
   : ["node:24.15.0-slim", "node:24-bookworm"];
 
 const inner = [
-  "set -e",
+  // pipefail: the vitest leg pipes through tail, and without it bash takes
+  // tail's exit status - a red suite would still print MATRIX_LEG_OK.
+  "set -eo pipefail",
   "export COREPACK_ENABLE_DOWNLOAD_PROMPT=0",
   "corepack enable",
   "echo \"node=$(node --version) pnpm=$(pnpm --version)\"",

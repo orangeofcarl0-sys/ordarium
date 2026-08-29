@@ -130,15 +130,17 @@ async function wait(ms: number): Promise<void> {
 describe("SqliteLedger open retry (G16)", () => {
   it("succeeds within the default bounded backoff when the holder releases (G16-A01)", async () => {
     const { path, before } = await createV2DatabaseWithOperation();
-    spawnLockHolder(path, 1_000);
+    spawnLockHolder(path, 300);
     await waitForWriteLock(path);
 
     // A small busy timeout forces each attempt to surface LEDGER_BUSY, so
     // the constructor's own retry loop - not sqlite's busy_timeout - has to
-    // carry the open across the release boundary. With the lock confirmed
-    // held and the hold (1s) far exceeding this timeout, the first attempt
-    // must fail (~100ms) and at least one backoff sleep (100ms) must pass
-    // before a retry can succeed.
+    // carry the open across the release boundary. The release (~300ms) must
+    // land inside the default retry horizon: its floor is the four 100ms
+    // backoff sleeps alone (400ms) even if every attempt failed instantly,
+    // and its realistic span (each attempt blocked ~100ms by the busy
+    // timeout) is ~900ms - so the first attempt fails and at least one
+    // backoff sleep passes before a retry can succeed, on any platform.
     const started = Date.now();
     const ledger = new SqliteLedger(path, { timeoutMs: 100 });
     const elapsed = Date.now() - started;

@@ -30,6 +30,6 @@ pnpm verify:architecture  → passed(零包变更,快照零漂移)
 
 ## 4. 未完成项
 
-- `verify:matrix`(Docker)仍待有 Docker 宿主的环境复跑(G11/G12 同一遗留项);
+- `verify:matrix`(Docker)仍待有 Docker 宿主的环境复跑(G11/G12 同一遗留项)——**【G16 更新】已于 2026-08-29 在本机 Docker 复跑双腿全绿**,并顺带修复矩阵暴露的缺陷(tsconfig reference 缺边、A01' 视界竞态、矩阵门 pipefail),见 `evidence/G16/exit-report.md` §4;
 - 内核侧 open 重试(`SqliteLedger` 构造器退避)是潜在 B 类小 Goal,待决议——**【G16 更新】已完成**(2026-08-29,`evidence/G16/exit-report.md`);
 - 分片/排队 v2 的触发刻度已由本数据给出口径:目标吞吐超 ~1400 写/s 或 p99 秒级不可接受时启动。

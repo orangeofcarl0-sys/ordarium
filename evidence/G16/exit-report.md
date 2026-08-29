@@ -9,7 +9,7 @@
 | ID | 验收项 | 证据 | 结果 |
 |---|---|---|---|
 | G16-A01 | 并发 open 赛跑（G12 harness 扩腿）：4 热写进程 + 6 opener 进程同 tick 齐发抢**新建库**（G12 实证构造器 `LEDGER_BUSY` 的正是该窗口），默认配置下全部 opener 在内置退避内打开成功、修订链无丢失更新、零句柄泄漏（临时目录可删） | `evidence/G16/open-race-results.json`（两跑独立复证：`allOpenersSucceeded:true`、`noLostUpdate:true`）；单测版 A01 另行承重 | PASS |
-| G16-A01'（单测版） | 子进程持 `BEGIN IMMEDIATE` 锁跨释放边界，`timeoutMs:100` 压掉 sqlite 自身 busy_timeout，构造器重试环承重把 v2 库打开并迁移至 v3、记录逐字节保留；同步机制为**轮询探测锁确已被持有**（零 busy_timeout 的 `BEGIN IMMEDIATE` 失败即为确认），替代脆弱的固定头程等待——本阶段曾实证 120ms 头程在负载下被 Node 启动时间击穿（elapsed 8ms 假绿），已修 | `packages/ledger-sqlite/test/open-retry.test.ts`（修复后连续 4 次全绿） | PASS |
+| G16-A01'（单测版） | 子进程持 `BEGIN IMMEDIATE` 锁跨释放边界，`timeoutMs:100` 压掉 sqlite 自身 busy_timeout，构造器重试环承重把 v2 库打开并迁移至 v3、记录逐字节保留；同步机制为**轮询探测锁确已被持有**（零 busy_timeout 的 `BEGIN IMMEDIATE` 失败即为确认），替代脆弱的固定头程等待——本阶段曾实证 120ms 头程在负载下被 Node 启动时间击穿（elapsed 8ms 假绿），已修；**Docker 矩阵复跑再暴露第二重竞态**：持锁 1000ms 贴着默认重试视界（≈900ms + 每尝试平台开销）的刀锋边缘，容器开销更小时反而耗尽视界（Windows 绿属侥幸），已改 holdMs 300——低于视界纯退避下限（4×100ms）的结构性余量，与平台无关（§4） | `packages/ledger-sqlite/test/open-retry.test.ts`（两轮修复后本机连续 3 次全绿 + Docker 双腿全绿） | PASS |
 | G16-A02 | `openRetry: {attempts:1}` 保留 fail-fast：撞锁一次性抛 `LEDGER_BUSY` | 同上（A02 用例；另含耗尽退避仍抛 `LEDGER_BUSY` 的稳定错误族用例） | PASS |
 | G16-A03 | 非 BUSY 不重试：corrupt 库 <300ms 一次性抛 `LEDGER_CORRUPT`、更新 schema 一次性抛 `LEDGER_NEWER_SCHEMA`；顺带修复 `mapSqliteFailure` 对 `errstr`（`SQLITE_NOTADB` 等）的识别空档——修复前 corrupt 库抛裸 `ERR_SQLITE_ERROR` | 同上（A03 用例，`attempts:5` 配置下验证不消耗重试） | PASS |
 | G16-A04 | `openRetry` 参数校验：非正整数 `attempts`、负 `delayMs`、NaN、非对象均抛 `TypeError` | 同上（A04 用例） | PASS |
@@ -44,10 +44,17 @@ verify:architecture passed
   - compatibility register: 6 entries verified
 $ pnpm verify:docs
 verify:docs passed (26 documents checked)
+
+$ pnpm verify:matrix   （Docker 29.7.2，真门 pipefail；双腿独立容器）
+=== matrix leg: node:24.15.0-slim ===   node=v24.15.0 pnpm=11.24.0
+Test Files  30 passed (30) / Tests 171 passed (171) / verify:architecture passed
+=== matrix leg: node:24-bookworm ===    node=v24.19.0 pnpm=11.24.0
+Test Files  30 passed (30) / Tests 171 passed (171) / verify:architecture passed
+MATRIX_LEG_OK × 2，runner 退出码 0
 ```
 
 ## 4. 未完成项
 
 - git push、`ordarium-v1.1.0` tag 与 GitHub Release（附五包 tarball）仍由用户执行——与本 Goal 无耦合的既有交接项。
-- `verify:matrix`（Docker 矩阵）仍未在本机复跑：本 Goal 零包依赖变更（ledger-sqlite 既有依赖不变），与 G12 同口径披露。
+- `verify:matrix`（Docker 矩阵）已在本机复跑全绿（§3，Docker 29.7.2 双腿）：本次复跑如实兑现披露并**暴露修复三处缺陷**，均随本提交闭合——(1) `packages/ledger-sqlite/tsconfig.json` 缺 `../testing` project reference（G11 引入的全仓唯一跨包测试导入，宿主因存量 dist 掩盖假绿，容器干净构建 TS2307）；(2) A01' 第二重竞态（视界 vs 持锁刀锋边缘，见 §1 A01' 行）；(3) 矩阵内层脚本缺 `pipefail`，vitest 经 `tail` 管道后红套件仍打印 `MATRIX_LEG_OK` 假绿（`set -eo pipefail` 修复）。
 - G13/G14/G15 依各自触发条件继续休眠（docs/17 §16.8）。
