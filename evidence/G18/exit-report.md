@@ -38,10 +38,23 @@ verify:architecture passed
   - compatibility register: 6 entries verified
 $ pnpm verify:docs
 verify:docs passed (28 documents checked)
+
+$ pnpm test:package   （六包 tarball 消费门,离线探针版）
+package-consumer passed
+  - @ordarium/{core,ledger-sqlite,dsh,testing,host-mcp,host-kit}: 6 tarball
+    一次安装 + ESM smoke(含 host-kit 握手/runner/harness 同一性断言)
+    + tsc 声明面探针(含 host-kit 编译)
+
+$ pnpm verify:matrix   （Docker 29.7.2,真门 pipefail;新包干净环境认证）
+=== matrix leg: node:24.15.0-slim ===
+Test Files  33 passed (33) / Tests 179 passed (179) / verify:architecture passed
+=== matrix leg: node:24-bookworm (v24.20.0) ===
+Test Files  33 passed (33) / Tests 179 passed (179) / verify:architecture passed
+MATRIX_LEG_OK × 2,runner 退出码 0
 ```
 
 ## 4. 未完成项
 
 - 首宿主案例:Palimpsest 按其升级协议接入 `@ordarium/host-kit` 并跑 runner,由其账面登记(预期 PLMP-ALN-1 r4);本 Goal 的 A02/A03/A04 是其对侧可消费的全部前提。
-- 下一次发布面:`@ordarium/*` tarball 五→六(新包 host-kit);release notes 按 docs/18 §1 五类清单披露(④新错误码 `HOST_CONTRACT_MISMATCH` + 新包面,①②③⑤无);`tools/package-consumer.mjs` 的 tarball 消费门按六包核对。
+- 下一次发布面:**已就绪(同日收口)**——`tools/package-consumer.mjs` 扩至六包并在本地实测通过(smoke 断言 host-kit 握手/runner/harness 同一性;types probe 编译 host-kit 声明面);探针步骤改为离线自洽(编译器与 `@types/node` 取自仓内 pinned devDeps + `typeRoots` 指向,不再网络安装)——修复其对 registry 的网络依赖,使该门符合 docs/17 §18"发布验证必须在无外部网络环境可重复"的冻结要求(当日 registry 拉取 typescript 平台包连续 ETIMEDOUT 暴露此违约)。Docker 矩阵双腿复跑全绿(§3),新包干净环境认证完成。release notes 按 docs/18 §1 五类清单披露(④新错误码 `HOST_CONTRACT_MISMATCH` + 新包面,①②③⑤无)。
 - git push(发布后文档线 + 本 Goal)与下一次版本锚定 tag 由用户执行。

@@ -1,5 +1,5 @@
 // Tarball consumer fixture (G7 design spec §2, G7-A01/A02/A14): packs every
-// kernel and leaf package, installs the five tarballs together into an
+// kernel and leaf package, installs the six tarballs together into an
 // isolated temp directory (no workspace resolution), then exercises ESM
 // imports, TypeScript declarations and the curated DSH root surface exactly
 // as an external consumer would.
@@ -10,13 +10,13 @@
 // release evidence report.
 
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const PACKAGES = ["core", "ledger-sqlite", "dsh", "testing", "host-mcp"];
+const PACKAGES = ["core", "ledger-sqlite", "dsh", "testing", "host-mcp", "host-kit"];
 
 function run(command, args, options = {}) {
   const viaShell = command === "pnpm" || command === "npm" || command === "tsc";
@@ -64,7 +64,7 @@ try {
   run("npm", ["install", "--no-audit", "--no-fund", "--loglevel", "error",
     ...tarballs.map((path) => path.replaceAll("\\", "/"))], { cwd: consumer });
 
-  // 3. ESM smoke across all five packages (A02: the one-install path only
+  // 3. ESM smoke across all six packages (A02: the one-install path only
   //    needs @ordarium/dsh; the rest prove their own entry points).
   writeFileSync(join(consumer, "smoke.mjs"), `
 import * as core from "@ordarium/core";
@@ -73,6 +73,12 @@ import * as dsh from "@ordarium/dsh";
 import { asDshTool } from "@ordarium/dsh/advanced";
 import { createMcpOrdarium } from "@ordarium/host-mcp";
 import * as testing from "@ordarium/testing";
+import {
+  assertHostContract,
+  HostAdapterHarness as KitHarness,
+  HOST_CONTRACT_VERSION,
+  runHostAdapterConformance,
+} from "@ordarium/host-kit";
 
 // Curated author façade: exactly the golden path (G7-A02/A11).
 const expectedRoot = new Set(["defineAction","defineSchema","effects","installOrdarium","jsonValueSchema","schema"]);
@@ -118,12 +124,26 @@ await mcp.stop();
 
 if (typeof testing.HostAdapterHarness !== "function") throw new Error("testing surface missing");
 if (typeof asDshTool !== "function") throw new Error("advanced surface missing");
+
+// Host kit (G18): the handshake binds the same contract truth as the packed
+// core, the harness is the conformance kit's own class, and the portable
+// runner is present.
+if (HOST_CONTRACT_VERSION !== 1) throw new Error("host kit contract version drifted");
+if (typeof assertHostContract !== "function") throw new Error("host-kit handshake missing");
+if (typeof runHostAdapterConformance !== "function") throw new Error("host-kit runner missing");
+if (KitHarness !== testing.HostAdapterHarness) throw new Error("host-kit harness is not the conformance kit truth");
+assertHostContract(HOST_CONTRACT_VERSION);
 console.log("SMOKE_OK");
 `);
   const smoke = run("node", ["smoke.mjs"], { cwd: consumer });
   if (!smoke.includes("SMOKE_OK")) failures.push("consumer smoke did not report SMOKE_OK");
 
-  // 4. TypeScript declarations compile from the tarballs (A01/A14).
+  // 4. TypeScript declarations compile from the tarballs (A01/A14). Hermetic
+  //    per docs/17 §18 (release verification must be repeatable without an
+  //    external network): the compiler and node types come from the
+  //    workspace's own pinned devDependencies, never the registry. The probe
+  //    resolves the packed @ordarium/* declarations through the consumer's
+  //    node_modules one level up.
   const typesProbe = join(consumer, "probe");
   mkdirSync(typesProbe, { recursive: true });
   cpSync(join(ROOT, "tools", "consumer-types-probe"), join(typesProbe, "src"), { recursive: true });
@@ -133,6 +153,11 @@ console.log("SMOKE_OK");
     private: true,
     type: "module",
   }, null, 2) + "\n");
+  const workspaceTsc = join(ROOT, "node_modules", "typescript", "bin", "tsc");
+  const workspaceTypes = join(ROOT, "node_modules", "@types");
+  if (!existsSync(workspaceTsc) || !existsSync(join(workspaceTypes, "node"))) {
+    throw new Error("workspace typescript/@types/node missing for the hermetic types probe (run pnpm install)");
+  }
   writeFileSync(join(typesProbe, "tsconfig.json"), JSON.stringify({
     compilerOptions: {
       target: "ES2024",
@@ -142,12 +167,11 @@ console.log("SMOKE_OK");
       noEmit: true,
       skipLibCheck: true,
       types: ["node"],
+      typeRoots: [workspaceTypes.replaceAll("\\", "/")],
     },
     include: ["src/**/*.ts"],
   }, null, 2) + "\n");
-  run("npm", ["install", "--no-audit", "--no-fund", "--loglevel", "error",
-    "typescript@7.0.2", "@types/node@26.2.0"], { cwd: typesProbe });
-  run("node", [join(typesProbe, "node_modules", "typescript", "bin", "tsc"), "-p", "."], { cwd: typesProbe });
+  run("node", [workspaceTsc, "-p", "."], { cwd: typesProbe });
 
   console.log("package-consumer passed");
   for (const [name, file] of sizes) console.log(`  - ${name}: ${file}`);

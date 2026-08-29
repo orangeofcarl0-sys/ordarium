@@ -21,6 +21,13 @@ import {
 import { asDshTool, type DshActionOptions } from "@ordarium/dsh/advanced";
 import { createMcpOrdarium } from "@ordarium/host-mcp";
 import { HostAdapterHarness } from "@ordarium/testing";
+import {
+  assertHostContract,
+  HOST_CONTRACT_VERSION,
+  type HostAdapterHarnessOptions,
+  type HostHarnessCallOptions,
+  type HostInvocationPort,
+} from "@ordarium/host-kit";
 
 const schema = defineSchema({ type: "string" }, (value) => {
   if (typeof value !== "string") throw new TypeError("expected string");
@@ -56,6 +63,15 @@ void (async () => {
   await mcp.stop();
   const harness = new HostAdapterHarness(runtime);
   await harness.invoke(guarded, "work", invocation);
+  // Host kit (G18): the handshake and the curated adapter surface compile
+  // against the packed declarations.
+  assertHostContract(HOST_CONTRACT_VERSION);
+  const kitPort: HostInvocationPort = runtime;
+  const kitHarnessOptions: HostAdapterHarnessOptions = { source: "probe" };
+  const kitCallOptions: HostHarnessCallOptions = { callId: "c2" };
+  void kitPort;
+  void kitHarnessOptions;
+  void kitCallOptions;
   void effectsFromRoot.readOnly();
   void (defineActionFromRoot satisfies typeof defineAction);
   void (null as unknown as DshOrdarium | undefined);
