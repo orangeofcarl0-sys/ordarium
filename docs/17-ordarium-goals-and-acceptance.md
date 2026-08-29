@@ -763,21 +763,39 @@ G8 不阻塞首发（第二宿主 `host-mcp` 已在 G5 交付）。它只在首�
 |---|---|---|
 | G12 并发压测 | **已完成** | 见 `ordarium/evidence/G12/exit-report.md` |
 
-## 16.8 条件触发的休眠 Goal（G13–G15；G16 已解除休眠并完成）
+## 16.8 条件触发的休眠 Goal（G13–G15、G17；G16 已解除休眠并完成）
 
-2026-08-29 会话决议：将四个条件触发项的设计**预先冻结**为休眠 spec——冻结设计而非排期；触发即按 spec 实施、无需重新设计；若触发时 docs/12–17 已漂移，以现行版为准逐条重核。触发确认与"解除休眠"须先在会话中决议，再按各自实现切片执行。
+2026-08-29 会话决议：将条件触发项的设计**预先冻结**为休眠 spec——冻结设计而非排期；触发即按 spec 实施、无需重新设计；若触发时 docs/12–17 已漂移，以现行版为准逐条重核。触发确认与"解除休眠"须先在会话中决议，再按各自实现切片执行。
 
 | Goal | 内容 | 触发条件 | 冻结 spec |
 |---|---|---|---|
 | G13 | 对话型 message kind + 保留类（第三种墨水；Stage 2） | 任一真实宿主或 Palimpsest 复兴提出通信取证需求 | `ordarium/evidence/G13/design-spec.md` |
 | G14 | 管理型 state 的运维面（两工具 + scope `operations:state`） | 操作者/运维需要跨宿主查看管理型 state | `ordarium/evidence/G14/design-spec.md` |
 | G15 | 组合分片账本（`@ordarium/ledger-sharded`） | 持续超过目标环境重测的单写者天花板（G12 口径 ~1400 写/s）或 p99 不可接受 | `ordarium/evidence/G15/design-spec.md` |
+| G17 | 操作间依赖图原语（边即管理型 state record + `planDependencyCascade` 级联计划纯函数，零合同面变更） | 任一宿主真实需要跨操作依赖审计或级联失效协议（Palimpsest 失效传播迁移到内核 refs 为天然触发源） | `ordarium/evidence/G17/design-spec.md` |
+
+G14/G17 触发源预测（2026-08-29 愿景评估，见 docs/research/vision-realization-2026-08.md）：判据①的实施（Palimpsest state kind 迁移 + `OPERATION_UNCERTAIN` 接缝焊接，§16.6 姊妹里程碑）预期同时构成 G14 与 G17 的最可能下一触发源。
 
 G16 触发条件"随时"满足，2026-08-29 会话决议解除休眠并实施完成：`SqliteLedger` 打开默认内置有界退避（5 次 × 100ms，仅 BUSY；corrupt/更新 schema 照旧 fail-closed），`openRetry: {attempts:1}` 保留 fail-fast 语义；并发 open 赛跑实证 + 验收矩阵见 exit report。
 
 | Goal | 状态 | 说明 |
 |---|---|---|
 | G16 打开退避重试 | **已完成** | 见 `ordarium/evidence/G16/exit-report.md`（delta：`evidence/G16/delta-G16-001-open-retry.md`，快照漂移仅限 ledger-sqlite 声明面） |
+
+## 16.9 愿景实现阶梯门槛表（2026-08-29 冻结）
+
+依据 [`docs/research/vision-realization-2026-08.md`](research/vision-realization-2026-08.md)（对账全文，研究层）把三级命题（研究档案 02 §4）的可证伪判据落为门槛表。本节只记"当前状态 + 闭合条件"，不构成 Goal 排期；②③⑤ 无触发时间承诺。
+
+| 判据 / 里程碑 | 当前状态 | 闭合条件 | 载体 |
+|---|---|---|---|
+| 命题二① ≥2 非自建宿主真实共账 | 载体就位 | Palimpsest 完成 state kind 迁移 + `OPERATION_UNCERTAIN` 接缝焊接 | 姊妹仓 palimpsest-repo（§16.6 姊妹里程碑） |
+| 命题二② 真实恢复案例成文 | 未发生 | 接缝焊接后首个真实 uncertain→reconcile 案例按宿主职责成文 | 同上 |
+| 命题二③ conformance 外部使用者 | 零 | 外部仓库引用 `runOperationLedgerConformance` / `runStateLedgerConformance` | 发布后可见性动作 |
+| 命题二④ swarm 并发压测 | **已交付**（G12 口径） | ——（G15 承接规模升级触发器） | `evidence/G12/` |
+| 命题二⑤ 第二领域嵌入 | 未发生 | 非相邻域宿主真实嵌入并成文 | 发布后可见性动作 |
+| 命题三 路径四步 | 前提齐备 | push/tag/Release（用户交接）→ ① → ③ → 公开恢复案例 → 第三方引用 | docs/18 发布纪律 |
+
+休眠触发预测：判据①的实施预期同时唤醒 G14 与 G17（§16.8）。
 
 ## 17. 首发端到端验收矩阵
 

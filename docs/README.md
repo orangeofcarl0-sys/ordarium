@@ -22,4 +22,6 @@ Ordarium 的文档分两层：**开发者指南**（`dev/`，面向使用者的�
 
 [`research/agent-landscape-2026-08/`](research/agent-landscape-2026-08/README.md)：2026-08 多智能体架构全景的代码级取证（Grok/Kimi/Manus/Danus/OpenManus/Magentic 六系统）、Ordarium 的层级定位与复刻可行性推演、三种公共账本分类法、dsh 集成取证、两项目责任宪章。**研究参考，不是合同**——与 12–18 冲突时以 12–18 为准；其中"行动项"类结论进入 Goal 流程前只是提案。
 
+[`research/vision-realization-2026-08.md`](research/vision-realization-2026-08.md)：愿景实现评估（2026-08-29）——三级命题对账全文、1.1.0 净贡献与实现阶梯推演；可执行门槛的权威载体在 docs/17 §16.9。
+
 实现证据链（delta sheets、design specs、各 Goal exit reports、Node 矩阵、release candidate 报告）位于 [`../evidence/`](../evidence/)；机器验证入口见 [`../package.json`](../package.json)（`pnpm verify:release` / `verify:matrix` / `verify:architecture` / `verify:docs`）。
