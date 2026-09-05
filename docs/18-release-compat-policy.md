@@ -1,7 +1,7 @@
 # 发布兼容政策与消费者核对单（Release Compatibility Policy & Consumer Checklist）
 
 > **地位**：宿主中立的**发布沟通纪律**，适用于 `@ordarium/*` 全部消费者。与 docs/12–17 冲突时以 12–17 为准；兼容层登记不在本文——那是 [`../evidence/compatibility-register.md`](../evidence/compatibility-register.md)（机器校验，有 owner 与移除条件），本文与其互补：登记表管"层"，本文管"话"。
-> **修订记录**：`RCP-1`＝初版（2026-08-29）。
+> **修订记录**：`RCP-1`＝初版（2026-08-29）；`RCP-2`＝登记表 `COMPAT-PAL-001` 关闭为已执行（2026-09-06，见修订流水）。
 
 ## 1. 发布沟通纪律
 
@@ -47,3 +47,4 @@
 | 日期 | 修订 |
 |---|---|
 | 2026-08-29 | 初版（RCP-1）：发布沟通纪律五类清单、消费者核对单七项模板、与兼容层登记的分工、首消费者案例引用。 |
+| 2026-09-06 | RCP-2：Palimpsest 侧 ALN-4② 正式确认送达；`evidence/compatibility-register.md` `COMPAT-PAL-001` 关闭为**已执行（G18，2026-08-29 交付）**，缝位纪律（不预设 Palimpsest 字段/shim）延续；首宿主 conformance 案例协议成文于 [`research/palimpsest-aln4-2-confirmation-2026-09-06.md`](research/palimpsest-aln4-2-confirmation-2026-09-06.md)，姊妹仓按其升级协议接入登记。 |
