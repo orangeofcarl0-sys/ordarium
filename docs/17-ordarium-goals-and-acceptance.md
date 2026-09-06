@@ -789,12 +789,12 @@ G16 触发条件"随时"满足，2026-08-29 会话决议解除休眠并实施完
 
 | 判据 / 里程碑 | 当前状态 | 闭合条件 | 载体 |
 |---|---|---|---|
-| 命题二① ≥2 非自建宿主真实共账 | **证据齐备**（2026-08-29 审计，闭合裁决待会话） | Palimpsest 完成 state kind 迁移 + `OPERATION_UNCERTAIN` 接缝焊接——审计确认两项均已落地：uncertain→reconcile 全协议消费（query-first、uncertain 落 blocked 不伪造判定）、管理型消费边界按最小消费裁决落地 | 姊妹仓 PLMP-ALN-1 r2/r3：`src/effects/promotion.ts` + `src/recovery/`（Crash A/B）、telemetry 外置试点（PLMP-TLM-1）、运行时 32 文件/173 测试全绿 |
-| 命题二② 真实恢复案例成文 | **已成文**（注入式口径；生产首例待积） | 生产环境首例真实恢复案例成文 | 姊妹仓 SDS `03`（晋升合并 reconcilable、INV-09/10、P1 出口）+ `promotion.ts` 头注（Crash A/B 全协议） |
+| 命题二① ≥2 非自建宿主真实共账 | **已闭合**（2026-09-06 会话裁决） | Palimpsest 完成 state kind 迁移 + `OPERATION_UNCERTAIN` 接缝焊接 + **首宿主 conformance 案例交付**——P1 装配期握手（`assertHostContract(1)` 构造路径 fail-closed）、P2 port 显式成面（`hostPort` 直通映射，DSH 镜像零涉及）、P3 四场景 runner 对 scratch 账本全过、P4 scratch 纪律机器断言、P6 登记 r8/SDS-15/heritage R17；P5 明示可选未启用 | 姊妹仓 PLMP-ALN-1 r8（`e90eb6e` 1.2.0 四行 pin 四层一致 + `5baf38c` PLMP-CONF-1）、对侧确认文书 P1–P6 逐项闭合、运行时全绿（CONF-A01–A04 + parity 硬门）；2026-09-06 姊妹侧只读复检 + 本侧轻核证 |
+| 命题二② 真实恢复案例成文 | **已成文**（注入式口径；生产首例待积——姊妹侧 2026-09-06 复检确认生产账本尚未启用，无事件样本） | 生产环境首例真实恢复案例成文 | 姊妹仓 SDS `03`（晋升合并 reconcilable、INV-09/10、P1 出口）+ `promotion.ts` 头注（Crash A/B 全协议） |
 | 命题二③ conformance 外部使用者 | 零 | 外部仓库引用 `runOperationLedgerConformance` / `runStateLedgerConformance` | 发布后可见性动作 |
 | 命题二④ swarm 并发压测 | **已交付**（G12 口径） | ——（G15 承接规模升级触发器） | `evidence/G12/` |
 | 命题二⑤ 第二领域嵌入 | 未发生 | 非相邻域宿主真实嵌入并成文 | 发布后可见性动作 |
-| 命题三 路径四步 | **第一步已兑现**（2026-08-29）：`ordarium-v1.1.0` 已发布（tag 落 `c874985`），姊妹仓按 docs/18 核对单完成消费 bump | ①闭合裁决 → ③ conformance 外部引用 → 公开恢复案例 → 第三方引用 | docs/18 发布纪律；姊妹仓 PLMP-ALN-1 升级协议 |
+| 命题三 路径四步 | **已走两步**：①发布与首次消费兑现（1.1.0/1.2.0 发布、姊妹仓按 docs/18 核对单完成消费 bump 并于 r8 交付首宿主案例）；②判据①已闭合（2026-09-06 会话裁决） | ③ conformance 外部引用 → 公开恢复案例 → 第三方引用 | docs/18 发布纪律；姊妹仓 PLMP-ALN-1 升级协议 |
 
 休眠触发预测：判据①的实施预期同时唤醒 G14 与 G17（§16.8）——2026-08-29 复盘：telemetry 试点未触达 scope 面与 refs（PLMP-ALN-1 r3），两 Goal 仍未唤醒，预测保持。
 
