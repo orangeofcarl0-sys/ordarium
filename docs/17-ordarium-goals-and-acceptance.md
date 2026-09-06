@@ -736,7 +736,7 @@ G8 不阻塞首发（第二宿主 `host-mcp` 已在 G5 交付）。它只在首�
 3. 根据采用情况改善 operator UX，但不扩大为通用控制平面；
 4. Palimpsest Runtime 稳定重构后，才实现 versioned Host Adapter；
 5. 多主机真实需求出现后才立项 remote authority-controlled time/ACL ledger；
-6. **DSH 适配器归属重审（2026-09-06 评估，双条件触发）**：`@ordarium/dsh` 是官方首宿主适配叶包（含 G9 运维面），内核纯度不受其影响（core 零宿主导入为机器门）。当 **(a) 官方 DSH 类型可消费（COMPAT-DSH-001 的前置约束解除）** 且 **(b) DSH 生态愿意持有自身适配器** 两条件同时成立时，可将 `@ordarium/dsh` 的宿主映射部分迁往 DSH 仓（Palimpsest 的“镜像→零改动切换”为先例），ordarium 侧 G9 运维面随之单独裁决去留。迁移属 breaking 变更：须经兼容登记（owner + 移除条件）并以 major 线执行。双条件不成立前不拆分——零内核纯度增益，纯付发布面代价。
+6. **DSH 适配器归属重审（2026-09-06 评估，双条件触发；2026-09-07 处置：无限期休眠）**：`@ordarium/dsh` 是官方首宿主适配叶包（含 G9 运维面），内核纯度不受其影响（core 零宿主导入为机器门）。当 **(a) 官方 DSH 类型可消费（COMPAT-DSH-001 的前置约束解除）** 且 **(b) DSH 生态愿意持有自身适配器** 两条件同时成立时，可将 `@ordarium/dsh` 的宿主映射部分迁往 DSH 仓（Palimpsest 的“镜像→零改动切换”为先例），ordarium 侧 G9 运维面随之单独裁决去留。迁移属 breaking 变更：须经兼容登记（owner + 移除条件）并以 major 线执行。双条件不成立前不拆分——零内核纯度增益，纯付发布面代价。**2026-09-07 裁决**：无限期休眠而非正式关闭——姊妹侧用户裁决放弃跟进（其四行 pin 恒不含 `@ordarium/dsh`，零依赖面；r10 已判重审双条件不挂 Palimpsest，见姊妹 07 r17/r18），本侧认定双条件系叶包自身的 DSH 生态条件、非内核外部采用前置；休眠零成本、正式关闭将抬高未来复活门槛，休眠期间零动作。
 
 验收重点是“替换/新增 adapter 不改 core/Action contract”。如果某个新宿主迫使 core 引入 host-specific 字段，说明 HostInvocationPort 不完整，应修正 port，而不是增加宿主判断层。
 
@@ -791,9 +791,9 @@ G16 触发条件"随时"满足，2026-08-29 会话决议解除休眠并实施完
 |---|---|---|---|
 | 命题二① ≥2 非自建宿主真实共账 | **已闭合**（2026-09-06 会话裁决） | Palimpsest 完成 state kind 迁移 + `OPERATION_UNCERTAIN` 接缝焊接 + **首宿主 conformance 案例交付**——P1 装配期握手（`assertHostContract(1)` 构造路径 fail-closed）、P2 port 显式成面（`hostPort` 直通映射，DSH 镜像零涉及）、P3 四场景 runner 对 scratch 账本全过、P4 scratch 纪律机器断言、P6 登记 r8/SDS-15/heritage R17；P5 明示可选未启用 | 姊妹仓 PLMP-ALN-1 r8（`e90eb6e` 1.2.0 四行 pin 四层一致 + `5baf38c` PLMP-CONF-1）、对侧确认文书 P1–P6 逐项闭合、运行时全绿（CONF-A01–A04 + parity 硬门）；2026-09-06 姊妹侧只读复检 + 本侧轻核证 |
 | 命题二② 真实恢复案例成文 | **已闭合**（2026-09-07 会话判定，对侧 07 r15 证据 + 本侧独立核证） | 生产环境首例**真实恢复案例**：干净容器 + 真实 git 仓，promote 操作到达 `dispatched`（git merge 在飞）时被**真实 SIGKILL**（无故障注入器、无测试替身）——孤儿态（`dispatched`、PREPARED=1/COMMITTED=0）经租约过期（30s；未过期时诚实报告 in-flight）→ reclaim→reconcile→重新派发→succeeded；事件链 `proposed→authorized→claimed→dispatched→(crash)→claimed→dispatched→succeeded`；main 恰 1 个合并（无双重提交）；TASK_SATISFIED。口径注记：SIGKILL 下字面 `uncertain` 状态行不可写，结果未知性由 `dispatched` 孤儿体现，恢复评估全程引擎自有（宿主未自实现恢复语义）——本侧先前"待字面 uncertain 事件"口径过严，撤回 | 姊妹仓 07 r15（`365df07`）+ `f6dc3f3`（`docker/minimal/recovery.sh`/`killer.mjs` 可复现基建）+ 本侧独立核证；注入式先例：SDS `03` + `promotion.ts` 头注（Crash A/B 全协议） |
-| 命题二③ conformance 外部使用者 | 零 | 外部仓库引用 `runOperationLedgerConformance` / `runStateLedgerConformance` | 发布后可见性动作 |
+| 命题二③ conformance 外部使用者 | 零（**双边休眠**——2026-09-07 双侧裁决：纯外部牵引、零跟进、不排期，等外部自发牵引激活） | 外部仓库引用 `runOperationLedgerConformance` / `runStateLedgerConformance` | 发布后可见性动作；候选群体拓清为任意 TS/Node harness 开发者（core/ledger-sqlite/host-kit 直达，或经 palimpsest 参考路径抄集成），非 DSH 相邻生态限定（姊妹 07 r17） |
 | 命题二④ swarm 并发压测 | **已交付**（G12 口径） | ——（G15 承接规模升级触发器） | `evidence/G12/` |
-| 命题二⑤ 第二领域嵌入 | 未发生 | 非相邻域宿主真实嵌入并成文 | 发布后可见性动作 |
+| 命题二⑤ 第二领域嵌入 | 未发生（**双边休眠**——2026-09-07 双侧裁决：同③） | 非相邻域宿主真实嵌入并成文 | 发布后可见性动作；诚实边界：示例宿主只算开发体验物料，不构成⑤的判据证据（姊妹 07 r17） |
 | 命题三 路径四步 | **已走两步**：①发布与首次消费兑现（1.1.0/1.2.0 发布、姊妹仓按 docs/18 核对单完成消费 bump 并于 r8 交付首宿主案例）；②判据①已闭合（2026-09-06 会话裁决）；真实恢复案例已公开成文（2026-09-07，判据②证据，两仓公开账面 + 可复现基建）——第 3 步"公开恢复案例"的事实面已具备 | ③ conformance 外部引用 → 公开恢复案例 → 第三方引用 | docs/18 发布纪律；姊妹仓 PLMP-ALN-1 升级协议 |
 
 休眠触发预测：判据①的实施预期同时唤醒 G14 与 G17（§16.8）——2026-08-29 复盘：telemetry 试点未触达 scope 面与 refs（PLMP-ALN-1 r3），两 Goal 仍未唤醒，预测保持。
