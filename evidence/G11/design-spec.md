@@ -141,3 +141,20 @@ CREATE INDEX IF NOT EXISTS ordarium_state_revisions_ns_idx
 
 - **Palimpsest 迁移是姊妹仓库里程碑**（命题二判据①载体）：本 Goal 交付内核、conformance 与合同修订；Palimpsest 收缩自建事件日志、焊 `OPERATION_UNCERTAIN` 接缝在其仓库落地。判据②（一次真实恢复案例成文）亦挂 Palimpsest 真实负载，本 Goal 不虚构。
 - 非目标：message kind、保留类/TTL、订阅/通知、全局跨 kind 序号、state lease、host-mcp 工具面、root façade 变更、失效传播语义、跨 namespace 权限引擎。
+
+## 10. 冻结后补记：首消费者形状反馈（2026-09-06，ALN-4③ 补记动作）
+
+> 性质：**追加记录，不改动上方冻结文本与已否决项**——四项会话决议（§1 决议①–④）与 §3 边界规则维持原样。本节登记首消费者（Palimpsest，ALN-1 最小消费裁决下的管理型首消费者）对 state kind 使用形状的评审反馈，兑现其 07 号对齐账诉求③的 Ordarium 侧补记动作（PLMP-ALN-1 §6）。
+
+**反馈内容**：计数器类负载的正确形状是 **append-only 主体**（一次性增量记录，创建后不改写），而非**覆盖式 CAS 累加槽位**。理由（消费者原文）：多写者下覆盖式 CAS 计数器没有干净的合并规则——取 max 丢增量、求和双计；一次性增量主体把并发合并退化为**交换律求和**，`list` 聚合装载即可重建视图。
+
+**依据（两处原文）**：
+
+1. **首条反馈**——PLMP-TLM-1 §1 决策记录（姊妹仓 `docs/engineering/08-telemetry-externalization-spec.md:22`，PLMP-ALN-1 r3 登记）：telemetry 计数器不采用"每对一槽位 + CAS 累加覆盖"，落地为 append-delta 主体（`delta-<uuid>` 键，`expectedRevision:0` 创建后不改写）+ `list` 聚合装载；原文明言"值得 Ordarium 侧在 G11 文档中补记"。
+2. **第二实例**——PLMP-CTX-2 的 manifest 落账（姊妹仓 `docs/engineering/14-context-retrieval-spec.md`，CTX2-D2 裁决：18 行；落账形状：71–73 行；PLMP-ALN-1 r9 登记）：manifest 生命周期同样落在 append-only/加法形状——每 revision 一条 `CONTEXT_MANIFEST_ADDED` 事件进 canonical 审计链（payload 全量、幂等键保证同 revision 重复调用事件数不增）+ `AttemptReport.contextManifest` 加法式可选字段——而非覆盖式可变槽位。
+
+**对本 Goal 设计的处置**：
+
+- 本反馈**验证而非推翻**冻结决议：append-only 主体形状在现行 CAS 合同内**已可表达**——每条增量用新键 `CAS(expectedRevision:0)` 创建、此后不改写，即为 append-only 主体（消费者两实例正是如此使用）；修订链/`stateHistory` 完整保留增量序列。冻结决议③"乐观 CAS 单原语"仍是并发仲裁机制，本反馈是**消费者侧的使用形状约定**，不构成内核合同缺口。
+- 是否把"append-only 主体"升为一等记录形状（如 write-once 标记或 delta-record kind），按需求拉动另行决议；本 Goal 与休眠 spec（G13–G17）均不预埋。
+- 来文勘误：请求方将首条反馈出处记为"PLMP-CTX-1 §1 决策记录"；反馈原文实际落于 PLMP-TLM-1 §1（08 号规格），CTX-1（12 号）为压缩器切片规格、无此决策记录——引用以本节所注原文为准。

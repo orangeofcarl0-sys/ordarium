@@ -1,6 +1,8 @@
 # 05 · 两项目责任宪章：Ordarium × Palimpsest
 
 > Palimpsest（新线 v0.1.2，`palimpsest-dsh`）是 Ordarium 的姊妹工程：管理层的参考实现 + 头号证明场。本档案定义两项目的责任边界、组合契约，并记录 2026-08 对 Palimpsest 的双轴审计。
+>
+> **【2026-09-06 勘误标注】**（PLMP-ALN-1 r6 文书澄清，refresh 责任归本仓）：§4 恢复项"全 `src/` 无 `OPERATION_UNCERTAIN`/reconcile 处理（待焊接缝）"及 §5.3 同源记载**已过时**——接缝已焊。原文按审计史保留，逐处随文标注，不删改历史。
 
 ## 1. Palimpsest 现状（artifact-verified，仓库逐文件）
 
@@ -39,6 +41,7 @@
 - 可溯 ✓✓：哈希链事件存储（620 行）+ projector + 快照 + evidence graph + 失效绑定——全谱系最强之列。
 - 确定 ✓✓：一次一事件调度器；门禁 DSL（纯函数、白名单、INCOMPLETE≠FAIL）；锦标赛平局归首。**全谱系唯一非 LLM 判定**。
 - 恢复 ✓计划层 / ✗副作用层：全 `src/` 无 `OPERATION_UNCERTAIN`/reconcile 处理——Ordarium 的恢复语义未被消费，promotion 操作落 uncertain 时无从处置（**待焊接缝**）。
+  - **【2026-09-06 过时标注】**上句已过时：H1-P1 已焊缝——`reconcileAll()`/PromotionRecoveryService（uncertain 落账 → 查询权威事实 → 显式收敛）+ `isTransientOperationError`（`UncertainOperationError` 归入 transient/busy 族映射，不按数字码硬编码）；telemetry/分配器外置（PLMP-TLM-1/ALC-1）补齐管理型 state kind 迁移面。原文保留作 2026-08 审计时点的历史记录。
 - 安全 ✓ 结构性：副作用全走 Safe Actions；门禁纯函数；fail-closed 槽位；attempt 绑定项目版本 + 隔离工作区。worker 工作区隔离强度待专项审计。
 
 **灵活性：拓扑内自适应是亮点，跨拓扑是空白。**
@@ -50,9 +53,11 @@
 **总判词**：当前 Palimpsest = "严谨优先的固定形态编排器"——该定位合格且判定器官全谱系最严格；作为自重构通用底座未合格。
 
 **通往双轴兼得的唯一动作**：把 gate DSL 的成功模式推广——**角色表、阶段图、门禁注册表全部上哈希链**成为事件溯源的声明式定义；"架构调整" = "一次计划修订 + 通过晋升门禁"——**系统只能通过自己的证据门禁重构自己**。Grok Build 的 workflow 脚本退化为带门禁的阶段图定义，Heavy 的对等通道退化为通道型角色定义，而每次自修改可溯、可回滚、确定性可验证。随后两件小事：焊 `OPERATION_UNCERTAIN` 接缝（同时完成 Ordarium 内核资格测试的第二宿主项）；worker 隔离强度审计。
+  **【2026-09-06 进度标注】**前一件已完成：接缝已焊（H1 `reconcileAll()`/PromotionRecoveryService），且第二宿主项以首宿主 conformance 案例形式兑现（PLMP-CONF-1，姊妹仓 r8 登记：装配期 `assertHostContract(1)` 握手 + `runHostAdapterConformance` 四场景全过）；**worker 隔离强度审计仍未发生**，继续在册。
 
 ## 5. 对 Ordarium 的直接含义
 
 1. Palimpsest 即"第二真实宿主"资格判据的载体——它对 operation ledger 的每一类消费（promotion、失效传播、门禁查询）都是内核合同的实战检验。
 2. 管理型 state kind（Stage 1）的第一个需求方就是 Palimpsest：计划修订上链的现状是自建事件日志，若内核提供 state kind，Palimpsest 可收缩自建面、两时间线合一。
 3. `OPERATION_UNCERTAIN` 接缝的缺失是双向的教训：内核提供了恢复语义，宿主必须消费——docs/dev/10 的宿主职责清单应把"处理 uncertain"列为显式合同项。
+   **【2026-09-06 过时标注】**"缺失"已过时（见 §4 同日标注）：宿主已消费恢复语义（`reconcileAll()`/PromotionRecoveryService）；教训本身成立且已合同化——`docs/dev/10`（lifecycle-and-recovery）现明文"**处理 `uncertain` 是显式合同**"（宿主职责清单第 2 条），本条建议已兑现。
