@@ -33,7 +33,7 @@ await state.write({
 
 ## 负载形状：覆盖式槽位 vs append-only 主体（首消费者反馈）
 
-覆盖式 CAS 槽位适合"计划/意图"这类**终值语义**——读最新修订即全部真相。首个深度消费（PLMP-TLM-1，Palimpsest telemetry 外置）给出了计数器类负载的另一形状：每样本一条 append-only 主体（`key: "delta-<uuid>"`，`expectedRevision: 0` 创建后**不改写**），读取用 `state.list(namespace)` 聚合装载——CAS 冲突面归零，修订史即数据本身。选型口径：要"当前值 + 修订史"用槽位；要"只增不减的事件序列"用 append-only 主体。
+覆盖式 CAS 槽位适合"计划/意图"这类**终值语义**——读最新修订即全部真相。首个深度消费（PLMP-TLM-1，Palimpsest telemetry 外置）给出了计数器类负载的另一形状：每样本一条 append-only 主体（`key: "delta-<uuid>"`，`expectedRevision: 0` 创建后**不改写**），读取用 `state.list(namespace)` 聚合装载——CAS 冲突面归零，修订史即数据本身。选型口径：要"当前值 + 修订史"用槽位；要"只增不减的事件序列"用 append-only 主体。**同步语义分两种且不可混用**（首消费者 TLM r2 生产实证）：`fresh`（零基线重放，pump 边界常规 flush）与 `load`（以 durable 聚合续接重启）——新进程误用 durable 聚合当基线会静默丢弃同形记录。
 
 ## 并发：乐观 CAS，没有锁
 

@@ -17,7 +17,7 @@
 | 判据(档案 02 §4) | 状态 | 依据与差距 |
 |---|---|---|
 | ① ≥2 非自建宿主真实共账 | **已闭合（2026-09-06 会话裁决）** | 载体全链完成:uncertain→reconcile 全协议消费(`promotion.ts`/`src/recovery/`,Crash A/B)、管理型消费(ALN-1 最小消费裁决,telemetry 外置)、**首宿主 conformance 案例交付**(PLMP-CONF-1,r8 登记:P1 装配期握手/P2 port 显式成面/P3 四场景 runner/P4 scratch 纪律/P6 登记三件套;P5 可选未启用;1.2.0 四行 pin 四层一致,CONF-A01–A04 全绿) |
-| ② 一次真实恢复案例成文 | **已成文(注入式)** | Crash A/B 全协议成文并测试覆盖(姊妹仓 SDS `03`:晋升合并 reconcilable、INV-09/10、P1 出口);生产环境首例待积 |
+| ② 一次真实恢复案例成文 | **已成文(注入式);生产账本已启用(2026-09-06)但真实 uncertain 事件未出现,口径维持开放** | Crash A/B 全协议成文并测试覆盖(姊妹仓 SDS `03`);生产启用里程碑成文(07 r11/r12:首例 e2e 真实晋升、累积 48+ 笔操作、docker/minimal 基建)——恢复案例待首个生产 uncertain 事件 |
 | ③ conformance kit 外部使用者 | **零** | `runOperationLedgerConformance`/`runStateLedgerConformance` 已随 `@ordarium/testing` 发布,无外部引用——本质是命题三问题,非代码问题 |
 | ④ swarm 并发压测数据 | **已交付(带口径)** | G12:K=1..8 共账压测,~1400 写/s 单写者天花板、CAS 冲突 ≤0.75%、零丢失更新、分位数成表。诚实限定:K=8 进程 ≠ Kimi 式 4000 路;天花板是已知边界,G15 休眠 spec 带量化触发器(持续超 ~1400/s 或 p99 不可接受) |
 | ⑤ 第二领域嵌入实证 | **未发生** | DSH 与 Palimpsest 属相邻域;真正异域(CI/数据管道/机器人等)尚未嵌入 |

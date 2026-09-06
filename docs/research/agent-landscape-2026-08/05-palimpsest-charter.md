@@ -42,6 +42,7 @@
 - 确定 ✓✓：一次一事件调度器；门禁 DSL（纯函数、白名单、INCOMPLETE≠FAIL）；锦标赛平局归首。**全谱系唯一非 LLM 判定**。
 - 恢复 ✓计划层 / ✗副作用层：全 `src/` 无 `OPERATION_UNCERTAIN`/reconcile 处理——Ordarium 的恢复语义未被消费，promotion 操作落 uncertain 时无从处置（**待焊接缝**）。
   - **【2026-09-06 过时标注】**上句已过时：H1-P1 已焊缝——`reconcileAll()`/PromotionRecoveryService（uncertain 落账 → 查询权威事实 → 显式收敛）+ `isTransientOperationError`（`UncertainOperationError` 归入 transient/busy 族映射，不按数字码硬编码）；telemetry/分配器外置（PLMP-TLM-1/ALC-1）补齐管理型 state kind 迁移面。原文保留作 2026-08 审计时点的历史记录。
+  - **【2026-09-06 二次刷新（TLM r2）】**遥测消费 flush 语义已修正（palimpsest 仓 `a758908`，07 r11/r12 登记）：`TelemetryStateSync` 双语义——`fresh()`（零基线，pump 边界常规 flush）与 `load()`（以 durable 聚合续接重启）；修正前新进程以 durable 聚合为基线会静默丢弃同形记录（Docker 最小干净环境 N=12 实证暴露）。**state kind 合同本体零变化**（append-delta、求和合并、`expectedRevision:0` 原样）——消费侧解释修正，非合同演进。锚：palimpsest 08 号规格 r2、07 r11/r12。
 - 安全 ✓ 结构性：副作用全走 Safe Actions；门禁纯函数；fail-closed 槽位；attempt 绑定项目版本 + 隔离工作区。worker 工作区隔离强度待专项审计。
 
 **灵活性：拓扑内自适应是亮点，跨拓扑是空白。**

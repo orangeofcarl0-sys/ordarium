@@ -790,7 +790,7 @@ G16 触发条件"随时"满足，2026-08-29 会话决议解除休眠并实施完
 | 判据 / 里程碑 | 当前状态 | 闭合条件 | 载体 |
 |---|---|---|---|
 | 命题二① ≥2 非自建宿主真实共账 | **已闭合**（2026-09-06 会话裁决） | Palimpsest 完成 state kind 迁移 + `OPERATION_UNCERTAIN` 接缝焊接 + **首宿主 conformance 案例交付**——P1 装配期握手（`assertHostContract(1)` 构造路径 fail-closed）、P2 port 显式成面（`hostPort` 直通映射，DSH 镜像零涉及）、P3 四场景 runner 对 scratch 账本全过、P4 scratch 纪律机器断言、P6 登记 r8/SDS-15/heritage R17；P5 明示可选未启用 | 姊妹仓 PLMP-ALN-1 r8（`e90eb6e` 1.2.0 四行 pin 四层一致 + `5baf38c` PLMP-CONF-1）、对侧确认文书 P1–P6 逐项闭合、运行时全绿（CONF-A01–A04 + parity 硬门）；2026-09-06 姊妹侧只读复检 + 本侧轻核证 |
-| 命题二② 真实恢复案例成文 | **已成文**（注入式口径；生产首例待积——姊妹侧 2026-09-06 复检确认生产账本尚未启用，无事件样本） | 生产环境首例真实恢复案例成文 | 姊妹仓 SDS `03`（晋升合并 reconcilable、INV-09/10、P1 出口）+ `promotion.ts` 头注（Crash A/B 全协议） |
+| 命题二② 真实恢复案例成文 | **生产账本已启用**（2026-09-06：首例 e2e 真实晋升成文、累积 48+ 笔操作）；**真实 uncertain→reconcile 事件未出现**（首批 attempt 全成功，本侧独立 grep 复证）——恢复案例口径维持开放，待首个生产 uncertain 事件成文后闭合 | 生产环境首例**真实恢复**案例（uncertain→reconcile）成文 | 注入式：姊妹仓 SDS `03` + `promotion.ts` 头注（Crash A/B 全协议）；生产启用里程碑：姊妹仓 07 r11/r12 + `docker/minimal/` 基建（N=12、28 attempts、productionLedgerOperations 5→48+） |
 | 命题二③ conformance 外部使用者 | 零 | 外部仓库引用 `runOperationLedgerConformance` / `runStateLedgerConformance` | 发布后可见性动作 |
 | 命题二④ swarm 并发压测 | **已交付**（G12 口径） | ——（G15 承接规模升级触发器） | `evidence/G12/` |
 | 命题二⑤ 第二领域嵌入 | 未发生 | 非相邻域宿主真实嵌入并成文 | 发布后可见性动作 |
