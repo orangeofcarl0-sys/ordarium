@@ -735,7 +735,8 @@ G8 不阻塞首发（第二宿主 `host-mcp` 已在 G5 交付）。它只在首�
 2. 收集真实 Provider adapters 后再决定是否抽公共 helper；
 3. 根据采用情况改善 operator UX，但不扩大为通用控制平面；
 4. Palimpsest Runtime 稳定重构后，才实现 versioned Host Adapter；
-5. 多主机真实需求出现后才立项 remote authority-controlled time/ACL ledger。
+5. 多主机真实需求出现后才立项 remote authority-controlled time/ACL ledger；
+6. **DSH 适配器归属重审（2026-09-06 评估，双条件触发）**：`@ordarium/dsh` 是官方首宿主适配叶包（含 G9 运维面），内核纯度不受其影响（core 零宿主导入为机器门）。当 **(a) 官方 DSH 类型可消费（COMPAT-DSH-001 的前置约束解除）** 且 **(b) DSH 生态愿意持有自身适配器** 两条件同时成立时，可将 `@ordarium/dsh` 的宿主映射部分迁往 DSH 仓（Palimpsest 的“镜像→零改动切换”为先例），ordarium 侧 G9 运维面随之单独裁决去留。迁移属 breaking 变更：须经兼容登记（owner + 移除条件）并以 major 线执行。双条件不成立前不拆分——零内核纯度增益，纯付发布面代价。
 
 验收重点是“替换/新增 adapter 不改 core/Action contract”。如果某个新宿主迫使 core 引入 host-specific 字段，说明 HostInvocationPort 不完整，应修正 port，而不是增加宿主判断层。
 
