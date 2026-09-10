@@ -34,6 +34,7 @@ describe("SqliteLedger", () => {
       liveLease: true,
       semanticHistory: true,
       stateRevisions: true,
+      stateChangeFeed: true,
     });
     ledger.close();
   });

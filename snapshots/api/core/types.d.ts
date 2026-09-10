@@ -157,6 +157,38 @@ export interface StateListFilter {
     namespace?: string | undefined;
     limit?: number | undefined;
 }
+/** Optional narrowing for the revisioned state change feed (ORD-BOOT-0). */
+export interface StateChangeFilter {
+    /** Restrict observation to one namespace; absent observes every namespace. */
+    namespace?: string | undefined;
+    /** Bounded page size; absent uses the ledger default. */
+    limit?: number | undefined;
+}
+/**
+ * One page of committed state revisions in durable ledger commit-observation
+ * order, ascending (ORD-BOOT-0). Unlike the `nextCursor?` pagination of the
+ * other read surfaces, `cursor` is always present: a consumer reaches the end
+ * of the feed and still holds a durable resume position for revisions
+ * committed later.
+ */
+export interface StateChangePage {
+    changes: StateRecord[];
+    /** Opaque, filter-independent durable position of the last delivered change. */
+    cursor: string;
+    /** True when at least one further matching change already exists past this page. */
+    hasMore: boolean;
+}
+/**
+ * Additive observation capability over the state kind: read committed
+ * revisions after a durable position without polling each subject
+ * individually. It is deliberately not part of `OperationLedger`, so
+ * existing ledger implementations stay source-compatible; a ledger declares
+ * it through `LedgerCapabilities.stateChangeFeed` and `supportsStateChangeFeed`
+ * is the fail-closed entry.
+ */
+export interface StateChangeFeed {
+    changes(filter?: StateChangeFilter, cursor?: string): Promise<StateChangePage>;
+}
 export type LedgerCoordination = "single-isolate" | "single-process-exclusive" | "local-multi-process";
 /**
  * Static, honest capability declaration every OperationLedger implementation
@@ -172,6 +204,13 @@ export interface LedgerCapabilities {
     readonly semanticHistory: boolean;
     /** Revisioned management state (the G11 state kind) on the same timeline machinery. */
     readonly stateRevisions: boolean;
+    /**
+     * Incremental observation of committed state revisions after a durable
+     * position (ORD-BOOT-0). Optional so existing custom ledgers keep compiling;
+     * absent means the capability is not offered and `StateStore.changes` fails
+     * closed with LEDGER_CAPABILITY_REQUIRED.
+     */
+    readonly stateChangeFeed?: boolean | undefined;
 }
 export interface OperationLedger {
     readonly capabilities: LedgerCapabilities;

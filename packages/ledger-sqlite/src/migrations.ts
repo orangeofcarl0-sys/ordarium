@@ -17,7 +17,7 @@ import {
   type OperationRecord,
 } from "@ordarium/core";
 
-export const LEDGER_SCHEMA_VERSION = 3;
+export const LEDGER_SCHEMA_VERSION = 4;
 
 export function createSchema(db: DatabaseSync): void {
   db.exec(`
@@ -124,13 +124,45 @@ export function migrateFromV1(db: DatabaseSync): void {
 }
 
 /**
- * Additive v2 -> v3 migration (G11 design spec §4): the state kind only
- * adds tables and indexes, so no existing row is touched. Throws raw on
- * any failure — the caller rolls the database back to its intact v2 state.
+ * Additive v2 -> current migration (G11 design spec §4, extended by
+ * ORD-BOOT-0): the state kind and the change-feed ordering table only add
+ * tables and indexes, so no existing row is touched. Throws raw on any
+ * failure — the caller rolls the database back to its intact v2 state.
  */
 export function migrateFromV2(db: DatabaseSync): void {
   db.exec("BEGIN IMMEDIATE");
   createStateTables(db);
+  db.exec(`PRAGMA user_version = ${LEDGER_SCHEMA_VERSION}`);
+  db.exec("COMMIT");
+}
+
+/**
+ * Additive v3 -> v4 migration (ORD-BOOT-0 spec §7). v3 recorded no global
+ * commit order, so the feed cannot recover it: existing revisions receive a
+ * deterministic synthetic position in (namespace, key, revision) order,
+ * explicitly labelled as migration order rather than original commit order.
+ * From v4 on, every new commit carries the real durable database order.
+ * Throws raw on any failure — the caller rolls the database back to its
+ * intact v3 state.
+ */
+export function migrateFromV3(db: DatabaseSync): void {
+  db.exec("BEGIN IMMEDIATE");
+  createStateTables(db);
+  // ROW_NUMBER() assigns 1..n deterministically; AUTOINCREMENT then continues
+  // from the highest explicit value for all post-migration commits.
+  db.exec(`
+    INSERT INTO ordarium_state_changes(change_seq, namespace, key, revision)
+    SELECT ROW_NUMBER() OVER (ORDER BY namespace ASC, key ASC, revision ASC),
+           namespace, key, revision
+    FROM ordarium_state_revisions
+  `);
+  const revisions = requireCount(db, "ordarium_state_revisions");
+  const changes = requireCount(db, "ordarium_state_changes");
+  if (revisions !== changes) {
+    throw new Error(
+      `state change backfill covered ${changes} of ${revisions} state revisions`,
+    );
+  }
   db.exec(`PRAGMA user_version = ${LEDGER_SCHEMA_VERSION}`);
   db.exec("COMMIT");
 }
@@ -163,7 +195,29 @@ function createStateTables(db: DatabaseSync): void {
 
       CREATE INDEX IF NOT EXISTS ordarium_state_revisions_ns_idx
         ON ordarium_state_revisions(namespace, written_at DESC);
+
+      CREATE TABLE IF NOT EXISTS ordarium_state_changes (
+        change_seq INTEGER PRIMARY KEY AUTOINCREMENT,
+        namespace TEXT NOT NULL,
+        key TEXT NOT NULL,
+        revision INTEGER NOT NULL,
+        UNIQUE (namespace, key, revision),
+        FOREIGN KEY (namespace, key, revision)
+          REFERENCES ordarium_state_revisions(namespace, key, revision)
+      ) STRICT;
+
+      CREATE INDEX IF NOT EXISTS ordarium_state_changes_ns_idx
+        ON ordarium_state_changes(namespace, change_seq);
   `);
+}
+
+function requireCount(db: DatabaseSync, table: string): number {
+  const row = db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get();
+  const count = row?.count;
+  if (typeof count !== "number") {
+    throw new LedgerCorruptError();
+  }
+  return count;
 }
 
 function requireString(value: unknown): string {

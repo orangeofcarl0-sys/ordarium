@@ -57,7 +57,7 @@ describe("SqliteLedger state kind (G11)", () => {
     }
   });
 
-  it("creates the v3 schema with the state tables and reverse index", () => {
+  it("creates the v4 schema with the state tables, change order and reverse index", () => {
     const ledger = createLedger();
     try {
       const raw = new DatabaseSync(ledger.path);
@@ -67,7 +67,8 @@ describe("SqliteLedger state kind (G11)", () => {
         .map((row) => String(row.name));
       expect(tables).toContain("ordarium_state_revisions");
       expect(tables).toContain("ordarium_state_refs");
-      expect(raw.prepare("PRAGMA user_version").get()?.user_version).toBe(3);
+      expect(tables).toContain("ordarium_state_changes");
+      expect(raw.prepare("PRAGMA user_version").get()?.user_version).toBe(4);
       raw.close();
     } finally {
       ledger.close();
@@ -99,6 +100,7 @@ describe("SqliteLedger state kind (G11)", () => {
 
     const downgrade = new DatabaseSync(ledger.path);
     downgrade.exec("DROP TABLE ordarium_state_refs");
+    downgrade.exec("DROP TABLE ordarium_state_changes");
     downgrade.exec("DROP TABLE ordarium_state_revisions");
     downgrade.exec("PRAGMA user_version = 2");
     downgrade.close();
@@ -108,7 +110,7 @@ describe("SqliteLedger state kind (G11)", () => {
       expect(await migrated.get(operation.operationId)).toEqual(before);
       expect(await migrated.getState("palimpsest", "plan")).toBeUndefined();
       const raw = new DatabaseSync(ledger.path);
-      expect(raw.prepare("PRAGMA user_version").get()?.user_version).toBe(3);
+      expect(raw.prepare("PRAGMA user_version").get()?.user_version).toBe(4);
       raw.close();
     } finally {
       migrated.close();

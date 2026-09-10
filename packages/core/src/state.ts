@@ -13,6 +13,9 @@ import type {
   AuthorizationDecision,
   InvocationIdentity,
   OperationLedger,
+  StateChangeFeed,
+  StateChangeFilter,
+  StateChangePage,
   StateListFilter,
   StateRecord,
   StateRecordPage,
@@ -53,6 +56,26 @@ export interface OrdariumStateStore {
     limit: number | undefined,
   ): Promise<StateRecordPage>;
   list(filter: StateListFilter | undefined, cursor: string | undefined): Promise<StateRecordPage>;
+  /**
+   * Incremental observation of committed state revisions after a durable
+   * position (ORD-BOOT-0). Delegates to the ledger's StateChangeFeed; a ledger
+   * without the capability fails closed with LEDGER_CAPABILITY_REQUIRED.
+   */
+  changes(filter?: StateChangeFilter, cursor?: string): Promise<StateChangePage>;
+}
+
+/**
+ * Fail-closed entry to the state change feed (ORD-BOOT-0): the ledger must
+ * both declare `stateChangeFeed` and expose `changes`. Capability declaration
+ * is explicit by design - the guard never infers support from a class name.
+ */
+export function supportsStateChangeFeed(
+  ledger: OperationLedger,
+): ledger is OperationLedger & StateChangeFeed {
+  return (
+    ledger.capabilities.stateChangeFeed === true &&
+    typeof (ledger as Partial<StateChangeFeed>).changes === "function"
+  );
 }
 
 export interface CreateStateStoreOptions {
@@ -144,6 +167,13 @@ export function createStateStore(options: CreateStateStoreOptions = {}): Ordariu
 
     async list(filter, cursor) {
       return ledger.listStates(filter, cursor);
+    },
+
+    async changes(filter, cursor) {
+      if (!supportsStateChangeFeed(ledger)) {
+        throw new LedgerCapabilityRequiredError("a durable state change feed");
+      }
+      return ledger.changes(filter, cursor);
     },
   };
 }

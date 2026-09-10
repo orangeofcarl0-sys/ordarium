@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 import {
+  InvalidCursorError,
   LedgerBusyError,
   LedgerClosedError,
   LedgerCorruptError,
@@ -21,6 +22,9 @@ import {
   type OperationListFilter,
   type OperationPage,
   type OperationRecord,
+  type StateChangeFeed,
+  type StateChangeFilter,
+  type StateChangePage,
   type StateListFilter,
   type StateRecord,
   type StateRecordPage,
@@ -28,7 +32,13 @@ import {
   type StateRevisionPage,
 } from "@ordarium/core";
 
-import { createSchema, migrateFromV1, migrateFromV2, LEDGER_SCHEMA_VERSION } from "./migrations.js";
+import {
+  createSchema,
+  migrateFromV1,
+  migrateFromV2,
+  migrateFromV3,
+  LEDGER_SCHEMA_VERSION,
+} from "./migrations.js";
 
 const APPLICATION_ID = 0x4f524441; // ASCII "ORDA"
 const DEFAULT_PAGE_LIMIT = 100;
@@ -61,7 +71,7 @@ export interface SqliteLedgerOptions {
  * migrations (v1 -> v3 rebuild, v2 -> v3 additive) and a stable
  * infrastructure error family.
  */
-export class SqliteLedger implements OperationLedger {
+export class SqliteLedger implements OperationLedger, StateChangeFeed {
   readonly capabilities = {
     durability: "crash-durable",
     coordination: "local-multi-process",
@@ -69,6 +79,7 @@ export class SqliteLedger implements OperationLedger {
     liveLease: true,
     semanticHistory: true,
     stateRevisions: true,
+    stateChangeFeed: true,
   } as const;
 
   readonly path: string;
@@ -109,6 +120,8 @@ export class SqliteLedger implements OperationLedger {
           this.#migrateFromV1();
         } else if (schemaVersion === 2) {
           this.#migrateFromV2();
+        } else if (schemaVersion === 3) {
+          this.#migrateFromV3();
         }
         return;
       } catch (error) {
@@ -465,12 +478,52 @@ export class SqliteLedger implements OperationLedger {
       for (const ref of next.refs) {
         insertRef.run(ref.kind, ref.id, next.namespace, next.key, next.revision);
       }
+      // The ordering row is assigned by the database inside this same
+      // transaction (ORD-BOOT-0): a committed revision and its observable
+      // change position are never split, and a rolled-back CAS leaves neither.
+      this.#prepare(`
+        INSERT INTO ordarium_state_changes(namespace, key, revision)
+        VALUES (?, ?, ?)
+      `).run(next.namespace, next.key, next.revision);
       this.#commit();
       return true;
     } catch (error) {
       this.#rollback();
       throw mapSqliteFailure(error);
     }
+  }
+
+  async changes(filter: StateChangeFilter = {}, cursor?: string): Promise<StateChangePage> {
+    this.#assertOpen();
+    assertStateChangeFilter(filter);
+    const after = cursor === undefined ? 0 : decodeStateChangeCursor(cursor);
+    const bound = resolveChangeLimit(filter.limit);
+    const clauses = ["c.change_seq > ?"];
+    const parameters: (number | string)[] = [after];
+    if (filter.namespace !== undefined) {
+      clauses.push("c.namespace = ?");
+      parameters.push(filter.namespace);
+    }
+    // LEFT JOIN so a dangling ordering row surfaces as ledger corruption
+    // through #parseStateRecord instead of being silently skipped.
+    const rows = this.#prepare(`
+      SELECT c.change_seq, r.namespace, r.key, r.revision, r.record_json
+      FROM ordarium_state_changes c
+      LEFT JOIN ordarium_state_revisions r
+        ON r.namespace = c.namespace AND r.key = c.key AND r.revision = c.revision
+      WHERE ${clauses.join(" AND ")}
+      ORDER BY c.change_seq ASC
+      LIMIT ?
+    `).all(...parameters, bound + 1);
+    const page = rows.slice(0, bound);
+    const changes = page.map((row) => this.#parseStateRecord(row));
+    const last = page[page.length - 1];
+    const position = last === undefined ? after : this.#number(last.change_seq);
+    return {
+      changes,
+      cursor: encodeCursor({ c: String(position) }),
+      hasMore: rows.length > bound,
+    };
   }
 
   async stateHistory(
@@ -601,6 +654,29 @@ export class SqliteLedger implements OperationLedger {
   #migrateFromV2(): void {
     try {
       migrateFromV2(this.#database);
+    } catch (error) {
+      this.#rollback();
+      const mapped = error instanceof OrdariumError ? error : mapSqliteFailure(error);
+      if (
+        mapped instanceof LedgerBusyError ||
+        mapped instanceof LedgerNewerSchemaError ||
+        mapped instanceof LedgerMigrationFailedError
+      ) {
+        throw mapped;
+      }
+      throw new LedgerMigrationFailedError(describe(error));
+    }
+  }
+
+  /**
+   * Additive v3 -> v4 migration (ORD-BOOT-0 spec §7): create the ordering
+   * table and backfill historical revisions in deterministic migration order.
+   * The migration body lives in migrations.ts and throws raw; the wrapper owns
+   * rollback and error-family mapping exactly like #migrateFromV1/#migrateFromV2.
+   */
+  #migrateFromV3(): void {
+    try {
+      migrateFromV3(this.#database);
     } catch (error) {
       this.#rollback();
       const mapped = error instanceof OrdariumError ? error : mapSqliteFailure(error);
@@ -827,4 +903,46 @@ function decodeStateSubjectRevisionCursor(cursor: string): { n: string; k: strin
   const separator = payload.s.indexOf("\u0000");
   if (separator <= 0) throw new LedgerCorruptError();
   return { n: payload.s.slice(0, separator), k: payload.s.slice(separator + 1), r: revision };
+}
+
+/**
+ * Opaque change-feed position (ORD-BOOT-0): base64url of `{"c":"<digits>"}`.
+ * Malformed input is caller error, not ledger corruption, and fails closed.
+ */
+function decodeStateChangeCursor(cursor: string): number {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
+  } catch {
+    throw new InvalidCursorError();
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new InvalidCursorError();
+  }
+  const raw = (parsed as Record<string, unknown>).c;
+  if (typeof raw !== "string" || !/^\d+$/u.test(raw)) {
+    throw new InvalidCursorError();
+  }
+  const position = Number(raw);
+  if (!Number.isSafeInteger(position) || position < 0) {
+    throw new InvalidCursorError();
+  }
+  return position;
+}
+
+function assertStateChangeFilter(filter: StateChangeFilter): void {
+  if (filter === null || typeof filter !== "object" || Array.isArray(filter)) {
+    throw new TypeError("state change filter must be an object");
+  }
+  if (filter.namespace !== undefined && typeof filter.namespace !== "string") {
+    throw new TypeError("state change filter namespace must be a string");
+  }
+}
+
+function resolveChangeLimit(limit: number | undefined): number {
+  if (limit === undefined) return DEFAULT_PAGE_LIMIT;
+  if (!Number.isSafeInteger(limit) || limit < 0) {
+    throw new TypeError("state change filter limit must be a safe integer >= 0");
+  }
+  return limit;
 }

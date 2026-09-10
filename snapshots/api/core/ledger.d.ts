@@ -1,10 +1,10 @@
-import type { ClaimRequest, LiveLease, OperationEventPage, OperationLedger, OperationListFilter, OperationPage, OperationRecord, StateListFilter, StateRecord, StateRecordPage, StateRef, StateRevisionPage } from "./types.js";
+import type { ClaimRequest, LiveLease, OperationEventPage, OperationLedger, OperationListFilter, OperationPage, OperationRecord, StateChangeFeed, StateChangeFilter, StateChangePage, StateListFilter, StateRecord, StateRecordPage, StateRef, StateRevisionPage } from "./types.js";
 /**
  * Volatile single-isolate ledger implementing the full v2 port contract
  * (G2 design spec §2): semantic CAS, atomic claim+lease, lightweight lease
  * renewal that never touches semantic state, and opaque cursor pagination.
  */
-export declare class MemoryLedger implements OperationLedger {
+export declare class MemoryLedger implements OperationLedger, StateChangeFeed {
     #private;
     readonly capabilities: {
         readonly durability: "volatile";
@@ -13,6 +13,7 @@ export declare class MemoryLedger implements OperationLedger {
         readonly liveLease: true;
         readonly semanticHistory: true;
         readonly stateRevisions: true;
+        readonly stateChangeFeed: true;
     };
     constructor(options?: {
         clock?: (() => Date) | undefined;
@@ -34,6 +35,7 @@ export declare class MemoryLedger implements OperationLedger {
     list(filter?: OperationListFilter, cursor?: string): Promise<OperationPage>;
     getState(namespace: string, key: string): Promise<StateRecord | undefined>;
     compareAndSetState(namespace: string, key: string, expectedRevision: number, next: StateRecord): Promise<boolean>;
+    changes(filter?: StateChangeFilter, cursor?: string): Promise<StateChangePage>;
     stateHistory(namespace: string, key: string, cursor?: string, limit?: number): Promise<StateRevisionPage>;
     listStatesReferencing(ref: StateRef, cursor?: string, limit?: number): Promise<StateRecordPage>;
     listStates(filter?: StateListFilter, cursor?: string): Promise<StateRecordPage>;

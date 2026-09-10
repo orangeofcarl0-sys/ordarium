@@ -236,3 +236,18 @@ export class StateRefNotFoundError extends OrdariumError {
     );
   }
 }
+
+/**
+ * A caller-supplied change-feed cursor could not be decoded as a durable
+ * position (ORD-BOOT-0). Distinct from LEDGER_CORRUPT: this is invalid
+ * caller input, not damaged ledger content, and it fails closed instead of
+ * silently restarting from the beginning of the feed.
+ */
+export class InvalidCursorError extends OrdariumError {
+  constructor() {
+    super(
+      "INVALID_CURSOR",
+      "The change cursor is not a valid durable position; refusing to guess a resume point",
+    );
+  }
+}

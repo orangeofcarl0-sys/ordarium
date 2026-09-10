@@ -1,4 +1,5 @@
 import { decodeOperationRecord, decodeStateRecord } from "./codec.js";
+import { InvalidCursorError, LedgerCorruptError } from "./errors.js";
 import type {
   ClaimRequest,
   LiveLease,
@@ -8,6 +9,9 @@ import type {
   OperationListFilter,
   OperationPage,
   OperationRecord,
+  StateChangeFeed,
+  StateChangeFilter,
+  StateChangePage,
   StateListFilter,
   StateRecord,
   StateRecordPage,
@@ -71,12 +75,51 @@ function decodeStateRefCursor(cursor: string): { s: string; r: number } {
   return { s: parsed.s, r: revision };
 }
 
+/** Opaque change-feed position (ORD-BOOT-0): base64url of `{"c":"<digits>"}`. */
+function decodeStateChangeCursor(cursor: string): number {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
+  } catch {
+    throw new InvalidCursorError();
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new InvalidCursorError();
+  }
+  const raw = (parsed as Record<string, unknown>).c;
+  if (typeof raw !== "string" || !/^\d+$/u.test(raw)) {
+    throw new InvalidCursorError();
+  }
+  const position = Number(raw);
+  if (!Number.isSafeInteger(position) || position < 0) {
+    throw new InvalidCursorError();
+  }
+  return position;
+}
+
+function assertStateChangeFilter(filter: StateChangeFilter): void {
+  if (filter === null || typeof filter !== "object" || Array.isArray(filter)) {
+    throw new TypeError("state change filter must be an object");
+  }
+  if (filter.namespace !== undefined && typeof filter.namespace !== "string") {
+    throw new TypeError("state change filter namespace must be a string");
+  }
+}
+
+function resolveChangeLimit(limit: number | undefined): number {
+  if (limit === undefined) return DEFAULT_PAGE_LIMIT;
+  if (!Number.isSafeInteger(limit) || limit < 0) {
+    throw new TypeError("state change filter limit must be a safe integer >= 0");
+  }
+  return limit;
+}
+
 /**
  * Volatile single-isolate ledger implementing the full v2 port contract
  * (G2 design spec §2): semantic CAS, atomic claim+lease, lightweight lease
  * renewal that never touches semantic state, and opaque cursor pagination.
  */
-export class MemoryLedger implements OperationLedger {
+export class MemoryLedger implements OperationLedger, StateChangeFeed {
   readonly capabilities = {
     durability: "volatile",
     coordination: "single-isolate",
@@ -84,6 +127,7 @@ export class MemoryLedger implements OperationLedger {
     liveLease: true,
     semanticHistory: true,
     stateRevisions: true,
+    stateChangeFeed: true,
   } as const;
 
   readonly #records = new Map<string, OperationRecord>();
@@ -92,6 +136,13 @@ export class MemoryLedger implements OperationLedger {
   #leaseRevisions = new Map<string, number>();
   /** Ascending revision chains per subject; element i holds revision i + 1. */
   readonly #stateSubjects = new Map<string, StateRecord[]>();
+  /**
+   * Durable-order metadata only (ORD-BOOT-0): element i is the commit at
+   * position i + 1; the record truth stays in #stateSubjects. The volatile
+   * ledger cannot offer crash durability, so this order is process-local -
+   * the capability declaration below is honest about that.
+   */
+  readonly #stateChanges: { namespace: string; key: string; revision: number }[] = [];
   #clock: () => Date;
 
   constructor(options: { clock?: (() => Date) | undefined } = {}) {
@@ -282,7 +333,39 @@ export class MemoryLedger implements OperationLedger {
     const chain = revisions ?? [];
     chain.push(saved);
     this.#stateSubjects.set(subject, chain);
+    this.#stateChanges.push({ namespace, key, revision: next.revision });
     return true;
+  }
+
+  async changes(filter: StateChangeFilter = {}, cursor?: string): Promise<StateChangePage> {
+    assertStateChangeFilter(filter);
+    const after = cursor === undefined ? 0 : decodeStateChangeCursor(cursor);
+    const bound = resolveChangeLimit(filter.limit);
+    const page: { position: number; record: StateRecord }[] = [];
+    let hasMore = false;
+    // Positions are contiguous 1..n, so resume at index === after.
+    for (let index = after; index < this.#stateChanges.length; index += 1) {
+      const position = index + 1;
+      const entry = this.#stateChanges[index];
+      if (entry === undefined) break;
+      if (filter.namespace !== undefined && entry.namespace !== filter.namespace) continue;
+      if (page.length === bound) {
+        hasMore = true;
+        break;
+      }
+      const stored = this.#stateSubjects.get(stateSubject(entry.namespace, entry.key))?.[entry.revision - 1];
+      if (stored === undefined) {
+        throw new LedgerCorruptError();
+      }
+      page.push({ position, record: clone(decodeStateRecord(stored)) });
+    }
+    const last = page[page.length - 1];
+    const position = last === undefined ? after : last.position;
+    return {
+      changes: page.map((entry) => entry.record),
+      cursor: encodeCursor({ c: String(position) }),
+      hasMore,
+    };
   }
 
   async stateHistory(

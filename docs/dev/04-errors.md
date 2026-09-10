@@ -43,6 +43,7 @@
 |---|---|---|
 | `STATE_REVISION_CONFLICT` | state 修订在写入前被其他写者移动（含 0=创建时已存在） | 重读当前修订，合并意图后以新 `expectedRevision` 重试；不得盲目覆盖 |
 | `STATE_REF_NOT_FOUND` | refs 指向不存在的 operation / state 修订 | 先落被引对象，或移除悬空引用后重写 |
+| `INVALID_CURSOR` | 变更订阅（`StateChangeFeed.changes`）的 cursor 不是合法持久位置（非法编码/形状/数值） | 用上一次成功读取返回的 cursor；**绝不**当作"从零开始"——fail closed |
 
 ## 生命周期
 
@@ -58,7 +59,7 @@
 | `LEDGER_CAPABILITY_REQUIRED` | ledger 能力不覆盖该 profile/拓扑 | 配置合格的 durable ledger 或显式降级 profile；**不会静默 fallback 到内存** |
 | `LEDGER_OPEN_FAILED` | 打不开数据库/属于别的应用 | 检查路径与占用；fail closed |
 | `LEDGER_NEWER_SCHEMA` | 数据库版本高于本运行时 | 升级 Ordarium；不自动降级 |
-| `LEDGER_MIGRATION_FAILED` | 迁移失败（已回滚；v1→v3 重建 / v2→v3 纯增表） | 数据库保持完整旧版本；排查后重试打开 |
+| `LEDGER_MIGRATION_FAILED` | 迁移失败（已回滚；v1→v4 重建 / v2→v4 纯增表 / v3→v4 增表 + 定序回填） | 数据库保持完整旧版本；排查后重试打开 |
 | `LEDGER_BUSY` | 数据库被其他写入者锁定 | 稍后重试；保持同一身份 |
 | `LEDGER_CORRUPT` | 记录/内容损坏 | fail closed；从一致性备份恢复 |
 | `LEDGER_CLOSED` | 已关闭后使用 | 编程错误 |

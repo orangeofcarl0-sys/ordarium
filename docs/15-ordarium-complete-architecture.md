@@ -1041,11 +1041,11 @@ G11 把单一职责的表述从"operation = 副作用"精确化为"record = 多�
 graph TB
     subgraph TL["唯一共享时间线（一个引擎：append-only · 内容寻址摘要 · revision CAS）"]
         direction LR
-        ST["管理型 state（G11）<br/>宿主声明 (namespace,key) · 修订链 · refs 存在性校验 · 溯源成链"]
+        ST["管理型 state（G11）<br/>宿主声明 (namespace,key) · 修订链 · refs 存在性校验 · 溯源成链<br/>变更订阅（ORD-BOOT-0）：StateChangeFeed · 持久全局提交序"]
         OP["证据型 operation（现状）<br/>内容寻址 · 授权绑定 · verdict 永不丢"]
         MSG["对话型 message<br/>未实现（Stage 2 需求拉动 · 保留类）"]
     end
-    HOST["宿主（编排/失效传播/传输路由）"] -->|"StateStore / Action invocation"| TL
+    HOST["宿主（编排/失效传播/传输路由）"] -->|"StateStore / Action invocation / changes(cursor)"| TL
 ```
 
-机器全部复用：state 不引入 revision/CAS/fence 之外的任何并发机制（准入门）；`stateRevisions` 能力门 fail-closed；SQLite v3 为纯增表迁移。内核不变量（append-only、fail-closed、错误码合同）一条不变；宿主禁止令与内核禁止令同时完好——Palimpsest 不自写并发原语，Ordarium 不解释管理语义。
+机器全部复用：state 不引入 revision/CAS/fence 之外的任何并发机制（准入门）；`stateRevisions` 能力门 fail-closed；SQLite v3 与 v4 均为纯增表迁移（v4 只加 `ordarium_state_changes` 定序元数据表 + 回填）。ORD-BOOT-0 的变更订阅只增加"观测序"这一读取投影，不新增并发机制：定序行与 CAS 同事务写入，refs/identity/valueDigest 语义不变，宿主仍拥有全部语义解释权。内核不变量（append-only、fail-closed、错误码合同）一条不变；宿主禁止令与内核禁止令同时完好——Palimpsest 不自写并发原语，Ordarium 不解释管理语义。

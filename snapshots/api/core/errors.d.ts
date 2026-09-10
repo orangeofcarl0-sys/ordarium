@@ -91,4 +91,13 @@ export declare class StateRevisionConflictError extends OrdariumError {
 export declare class StateRefNotFoundError extends OrdariumError {
     constructor(detail: string);
 }
+/**
+ * A caller-supplied change-feed cursor could not be decoded as a durable
+ * position (ORD-BOOT-0). Distinct from LEDGER_CORRUPT: this is invalid
+ * caller input, not damaged ledger content, and it fails closed instead of
+ * silently restarting from the beginning of the feed.
+ */
+export declare class InvalidCursorError extends OrdariumError {
+    constructor();
+}
 //# sourceMappingURL=errors.d.ts.map

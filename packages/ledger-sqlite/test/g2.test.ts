@@ -167,7 +167,7 @@ describe("G2 ledger platform", () => {
     const ledger = new SqliteLedger(path);
     try {
       const raw = new DatabaseSync(path);
-      expect(raw.prepare("PRAGMA user_version").get()).toMatchObject({ user_version: 3 });
+      expect(raw.prepare("PRAGMA user_version").get()).toMatchObject({ user_version: 4 });
       raw.close();
 
       const succeeded = await ledger.get(`op_${"a".repeat(40)}`);

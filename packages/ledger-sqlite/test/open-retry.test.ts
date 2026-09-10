@@ -148,7 +148,7 @@ describe("SqliteLedger open retry (G16)", () => {
       expect(elapsed).toBeGreaterThanOrEqual(200);
       expect(elapsed).toBeLessThan(5_000);
       const raw = new DatabaseSync(path);
-      expect(raw.prepare("PRAGMA user_version").get()?.user_version).toBe(3);
+      expect(raw.prepare("PRAGMA user_version").get()?.user_version).toBe(4);
       raw.close();
       expect(await ledger.get(fixtureOperationId)).toEqual(before);
     } finally {

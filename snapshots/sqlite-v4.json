@@ -1,8 +1,8 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "pragmas": {
     "application_id": 1330791489,
-    "user_version": 3,
+    "user_version": 4,
     "journal_mode": "wal"
   },
   "schema": [
@@ -11,6 +11,12 @@
       "name": "ordarium_operations_state_idx",
       "tbl_name": "ordarium_operations",
       "sql": "CREATE INDEX ordarium_operations_state_idx\n        ON ordarium_operations(state, updated_at DESC)"
+    },
+    {
+      "type": "index",
+      "name": "ordarium_state_changes_ns_idx",
+      "tbl_name": "ordarium_state_changes",
+      "sql": "CREATE INDEX ordarium_state_changes_ns_idx\n        ON ordarium_state_changes(namespace, change_seq)"
     },
     {
       "type": "index",
@@ -41,6 +47,12 @@
       "name": "ordarium_operations",
       "tbl_name": "ordarium_operations",
       "sql": "CREATE TABLE ordarium_operations (\n        operation_id TEXT PRIMARY KEY,\n        semantic_revision INTEGER NOT NULL,\n        state TEXT NOT NULL,\n        updated_at TEXT NOT NULL,\n        record_json TEXT NOT NULL\n      ) STRICT"
+    },
+    {
+      "type": "table",
+      "name": "ordarium_state_changes",
+      "tbl_name": "ordarium_state_changes",
+      "sql": "CREATE TABLE ordarium_state_changes (\n        change_seq INTEGER PRIMARY KEY AUTOINCREMENT,\n        namespace TEXT NOT NULL,\n        key TEXT NOT NULL,\n        revision INTEGER NOT NULL,\n        UNIQUE (namespace, key, revision),\n        FOREIGN KEY (namespace, key, revision)\n          REFERENCES ordarium_state_revisions(namespace, key, revision)\n      ) STRICT"
     },
     {
       "type": "table",
@@ -82,5 +94,6 @@
     }
   ],
   "stateRevisions": [],
-  "stateRefs": []
+  "stateRefs": [],
+  "stateChanges": []
 }

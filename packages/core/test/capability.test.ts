@@ -217,6 +217,7 @@ describe("ledger capability gate (G1-A10)", () => {
       liveLease: true,
       semanticHistory: true,
       stateRevisions: true,
+      stateChangeFeed: true,
     });
     expect(new MemoryLedger().capabilities.durability).toBe("volatile");
   });

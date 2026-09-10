@@ -1,4 +1,4 @@
-import { digestJson, type InvocationIdentity, type JsonValue, type OperationLedger, type OperationRecord, type StateRecord, type StateRef } from "@ordarium/core";
+import { digestJson, supportsStateChangeFeed, type InvocationIdentity, type JsonValue, type OperationLedger, type OperationRecord, type StateChangeFeed, type StateRecord, type StateRef } from "@ordarium/core";
 
 /**
  * State-kind ledger conformance (G11 design spec §7, G11-A09): every ledger
@@ -188,5 +188,68 @@ export async function runStateLedgerConformance(ledger: OperationLedger): Promis
   const subjectRest = await ledger.listStates({ namespace: NAMESPACE }, subjectPage.nextCursor);
   if (subjectRest.records.length !== 1 || subjectRest.records[0]?.key !== "plan") {
     throw violation("listStates must resume from its cursor");
+  }
+
+  // Change feed (ORD-BOOT-0): an optional capability, so it is asserted only
+  // when declared. A ledger that advertises it must deliver every commit once
+  // in durable order under any page size, hold a durable resume position at
+  // the caught-up edge, and fail closed on a malformed cursor.
+  if (ledger.capabilities.stateChangeFeed === true) {
+    if (!supportsStateChangeFeed(ledger)) {
+      throw violation("a ledger declaring stateChangeFeed must implement changes()");
+    }
+    const feed: OperationLedger & StateChangeFeed = ledger;
+    const label = (record: StateRecord): string =>
+      `${record.namespace}/${record.key}@${record.revision}`;
+    const expected = ["conformance/plan@1", "conformance/plan@2", "conformance/gates@1", "conformance/notes@1"];
+
+    const traverse = async (limit: number): Promise<string[]> => {
+      const seen: string[] = [];
+      let cursor: string | undefined = undefined;
+      let page = await feed.changes({ limit }, cursor);
+      seen.push(...page.changes.map(label));
+      while (page.hasMore) {
+        cursor = page.cursor;
+        page = await feed.changes({ limit }, cursor);
+        seen.push(...page.changes.map(label));
+      }
+      return seen;
+    };
+
+    const wide = await traverse(2);
+    const narrow = await traverse(1);
+    if (JSON.stringify(wide) !== JSON.stringify(expected)) {
+      throw violation("changes must observe every committed revision once in durable commit order");
+    }
+    if (JSON.stringify(narrow) !== JSON.stringify(wide)) {
+      throw violation("changes must be page-size invariant (no gaps, no duplicates)");
+    }
+
+    let caughtUp = await feed.changes(undefined, undefined);
+    while (caughtUp.hasMore) {
+      caughtUp = await feed.changes(undefined, caughtUp.cursor);
+    }
+    const atEdge = await feed.changes(undefined, caughtUp.cursor);
+    if (atEdge.changes.length !== 0 || atEdge.hasMore) {
+      throw violation("changes must return an empty caught-up page with a usable cursor");
+    }
+    const probe = stateRecord(1, { v: "feed" }, [], { key: "feed-probe" });
+    if (await ledger.compareAndSetState(NAMESPACE, "feed-probe", 0, probe) !== true) {
+      throw violation("the change-feed probe subject must create");
+    }
+    const afterProbe = await feed.changes(undefined, caughtUp.cursor);
+    if (afterProbe.changes.length !== 1 || label(afterProbe.changes[0]!) !== "conformance/feed-probe@1") {
+      throw violation("a persisted caught-up cursor must observe revisions committed later");
+    }
+
+    let malformedRejected = false;
+    try {
+      await feed.changes(undefined, "%%%not-a-cursor%%%");
+    } catch {
+      malformedRejected = true;
+    }
+    if (!malformedRejected) {
+      throw violation("a malformed change cursor must fail closed");
+    }
   }
 }

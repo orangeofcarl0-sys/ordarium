@@ -46,4 +46,4 @@ design-spec 是后续 Goal 的进入条件：G3–G8 的 design-spec 已全部�
 
 - `pnpm verify:architecture` 在无解释漂移时必须失败；
 - `pnpm snapshots:update` 只能在附带 Delta Sheet 的同一变更集内执行；
-- 快照文件（`snapshots/api/<pkg>/**/*.d.ts` 全量声明快照、`snapshots/contracts.json`、`snapshots/sqlite-v1.json`）必须与对应 Delta Sheet 一起提交。
+- 快照文件（`snapshots/api/<pkg>/**/*.d.ts` 全量声明快照、`snapshots/contracts.json`、当前 schema 的 `snapshots/sqlite-v4.json`）必须与对应 Delta Sheet 一起提交。

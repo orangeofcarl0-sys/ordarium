@@ -802,6 +802,14 @@ G16 触发条件"随时"满足，2026-08-29 会话决议解除休眠并实施完
 
 依据 `ordarium/evidence/G18/design-spec.md`（2026-08-29 会话决议：新叶包形态 + 手写 `HOST_CONTRACT_VERSION` 常量 + 冻结并即席实施）。G8 前置"Palimpsest Runtime 稳定重构后"经同日审计确认满足（姊妹仓 H1 交付、治理上链、32 文件/173 测试全绿；`COMPAT-PAL-001` 移除条件"真实需求出现时重审"到来）。交付物：core 的 `HOST_CONTRACT_VERSION`/`assertHostContract`/`HostContractMismatchError`（错误码 `HOST_CONTRACT_MISMATCH`，exact-match fail-closed，宿主可见合同语义变化时 +1 并在 docs/13/docs/18 记录修订）；testing 的 `runHostAdapterConformance`（四场景可移植宿主 conformance，`runStateLedgerConformance` 同款框架不可知纪律）；新叶包 `@ordarium/host-kit`（curated 适配面 + 版本协商 + runner re-export；root façade 零漂移，架构门叶包规则扩一档：叶包可依赖 conformance kit）。验收 G18-A01–A05 见该 spec §3；首宿主案例（Palimpsest 跑 runner）由姊妹仓按其升级协议登记，PLMP-ALN-1 诉求②自交付起转为"待消费者接入"。
 
+## 16.11 ORD-BOOT-0（发布后追加）：修订型 state 变更订阅原语
+
+依据 [`docs/research/ORD-BOOT-0-state-change-feed-spec.md`](research/ORD-BOOT-0-state-change-feed-spec.md)（2026-09-11 冻结；审计与选型见 [`assessment`](research/ORD-BOOT-0-state-change-feed-assessment.md)）。目标是在不引入任何多智能体语义的前提下，补齐一个通用系统原语：**跨主体、按持久提交序增量观测已提交的管理型 state 修订**。交付物：core 的 `StateChangeFeed` 接口 + `supportsStateChangeFeed` 守卫 + `StateChangeFilter/Page` + `LedgerCapabilities.stateChangeFeed?`（可选）+ `OrdariumStateStore.changes` 委托 + 新错误码 `INVALID_CURSOR`；`MemoryLedger` 与 `SqliteLedger` 双实现（后者为 crash-durable 参考实现）；SQLite schema **v4**——纯增表 `ordarium_state_changes`（`change_seq INTEGER PRIMARY KEY AUTOINCREMENT` + 外键 + 零 payload 副本，作定序/索引元数据），v3→v4 事务内按 `(namespace,key,revision)` 确定迁移序回填（明确非原始提交序）并断言计数守恒；testing `runStateLedgerConformance` 扩展 feed 场景（声明即断言）。验收 SCF-A01–A10 见交付报告 `evidence/ORD-BOOT-0/`（基本有序观测 / 分页无缺口 / caught-up 后新写 / restart-stable cursor / 双写者（含真实双进程）/ CAS loser 无幽灵 / namespace filter / 畸形 cursor fail-closed / 真实 v3→v4 迁移与回滚 / crash-reopen 完整性）。冻结不变量 **SCF-INV-1..7**：①提交可见 ②失败 CAS 无幽灵 ③持久 resume ④无缺口遍历 ⑤单一真值 ⑥host 中立 ⑦协调边界（跨独立本地 SQLite 客户端）。`HOST_CONTRACT_VERSION` **不变**（`1`；宿主调用握手未变）；包版本 minor 1.3.0。明确非目标（defer 到下一个 Palimpsest 实验）：`ack`/consumer offsets/durable subscriptions/阻塞等待/网络传输/任何 `collab_*` 适配面。
+
+| Item | 状态 | 说明 |
+|---|---|---|
+| ORD-BOOT-0 变更订阅原语 | **已完成** | 见 `evidence/ORD-BOOT-0/`（delta `delta-ORDBOOT0-001-state-change-feed.md` + exit report） |
+
 ## 17. 首发端到端验收矩阵
 
 | 领域 | 必测场景 | 主要 Goal | 核心断言 |
@@ -816,6 +824,7 @@ G16 触发条件"随时"满足，2026-08-29 会话决议解除休眠并实施完
 | Cancellation | before/after dispatch | G3/G6 | before 可 cancelled，after 仍按 Provider fact/uncertain |
 | Operations | inspect/page/history/reconcile-only/no material/no auth | G4/G5 | query-only、脱敏、无 force retry |
 | Ledger | capability matrix、v1 migration、corrupt、busy/full/open failure、backup/reopen | G1/G2 | fail closed、单 canonical schema、无半迁移、无 memory fallback |
+| State feed | ordered observation、limit=1 no-gap、caught-up resume、restart、two writers、CAS loser ghost、namespace filter、malformed cursor、v3→v4 migration、crash/reopen | ORD-BOOT-0 | 提交可见 ⇔ 可观测；失败 CAS 无 feed 项；持久 cursor 跨重启有效；单一真值、零 payload 副本；跨独立本地 SQLite 客户端成立 |
 | HMR | quiesce/new call/in-flight/reload | G3/G5 | drain 后 close，相同 version 可恢复 |
 | DSH | native pipeline、approval、render、parallel/restart | G5 | Host Authority 不被复制或绕过 |
 | Provider | durable/finite window、query/absence/cancel/fence/principal | G6 | 声明与真实能力一致，finite 过期停止 execute，失败时降级 |

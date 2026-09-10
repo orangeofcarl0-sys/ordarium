@@ -1,6 +1,6 @@
 import { type JsonValue } from "./json.js";
 import type { OrdariumRuntime } from "./runtime.js";
-import type { AuthorizationDecision, InvocationIdentity, OperationLedger, StateListFilter, StateRecord, StateRecordPage, StateRef, StateRevisionPage } from "./types.js";
+import type { AuthorizationDecision, InvocationIdentity, OperationLedger, StateChangeFeed, StateChangeFilter, StateChangePage, StateListFilter, StateRecord, StateRecordPage, StateRef, StateRevisionPage } from "./types.js";
 /**
  * The management state surface (G11 design spec §2): the host-declared,
  * revision-CAS'd half of the shared timeline. It owns no recovery engine and
@@ -24,7 +24,19 @@ export interface OrdariumStateStore {
     history(namespace: string, key: string, cursor: string | undefined, limit: number | undefined): Promise<StateRevisionPage>;
     listReferencing(ref: StateRef, cursor: string | undefined, limit: number | undefined): Promise<StateRecordPage>;
     list(filter: StateListFilter | undefined, cursor: string | undefined): Promise<StateRecordPage>;
+    /**
+     * Incremental observation of committed state revisions after a durable
+     * position (ORD-BOOT-0). Delegates to the ledger's StateChangeFeed; a ledger
+     * without the capability fails closed with LEDGER_CAPABILITY_REQUIRED.
+     */
+    changes(filter?: StateChangeFilter, cursor?: string): Promise<StateChangePage>;
 }
+/**
+ * Fail-closed entry to the state change feed (ORD-BOOT-0): the ledger must
+ * both declare `stateChangeFeed` and expose `changes`. Capability declaration
+ * is explicit by design - the guard never infers support from a class name.
+ */
+export declare function supportsStateChangeFeed(ledger: OperationLedger): ledger is OperationLedger & StateChangeFeed;
 export interface CreateStateStoreOptions {
     /** Binding to a runtime adds the quiesce/close gates to every write. */
     readonly runtime?: OrdariumRuntime | undefined;
