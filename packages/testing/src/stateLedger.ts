@@ -1,4 +1,4 @@
-import { digestJson, supportsStateChangeFeed, type InvocationIdentity, type JsonValue, type OperationLedger, type OperationRecord, type StateChangeFeed, type StateRecord, type StateRef } from "@ordarium/core";
+import { RESOURCE_LIMITS, digestJson, supportsStateChangeFeed, type InvocationIdentity, type JsonValue, type OperationLedger, type OperationRecord, type StateChangeFeed, type StateRecord, type StateRef } from "@ordarium/core";
 
 /**
  * State-kind ledger conformance (G11 design spec §7, G11-A09): every ledger
@@ -250,6 +250,36 @@ export async function runStateLedgerConformance(ledger: OperationLedger): Promis
     }
     if (!malformedRejected) {
       throw violation("a malformed change cursor must fail closed");
+    }
+
+    // ORD-BOOT-0.1 portable guarantees: zero page size can never make
+    // progress, an over-ceiling request is outside the resource envelope, and
+    // a syntactically valid position beyond this ledger's history must not
+    // masquerade as caught up. The future position uses the frozen cursor
+    // format on purpose - conformance is allowed to know the contract.
+    for (const invalidLimit of [0, RESOURCE_LIMITS.maxStateChangePageItems + 1]) {
+      let limitRejected = false;
+      try {
+        await feed.changes({ limit: invalidLimit }, undefined);
+      } catch {
+        limitRejected = true;
+      }
+      if (!limitRejected) {
+        throw violation(`changes must reject limit=${invalidLimit}`);
+      }
+    }
+    const futureCursor = Buffer.from(
+      JSON.stringify({ c: String(Number.MAX_SAFE_INTEGER) }),
+      "utf8",
+    ).toString("base64url");
+    let futureRejected = false;
+    try {
+      await feed.changes(undefined, futureCursor);
+    } catch {
+      futureRejected = true;
+    }
+    if (!futureRejected) {
+      throw violation("a cursor beyond the ledger high-water mark must fail closed");
     }
   }
 }

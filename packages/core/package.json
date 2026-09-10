@@ -1,6 +1,6 @@
 {
   "name": "@ordarium/core",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "Portable Safe Action contract and embedded effect-authority runtime",
   "private": false,
   "type": "module",

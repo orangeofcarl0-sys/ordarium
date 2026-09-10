@@ -1,6 +1,8 @@
 # ORD-BOOT-0 规范：修订型 state 变更订阅（StateChangeFeed）
 
 > **冻结设计**（实现前冻结，2026-09-11）。本文是实现 ORD-BOOT-0 的规范载体；与 docs/12–18 冲突时以 12–18 为准，本文只收敛该原语的形状与语义。审计与选型依据见 [`ORD-BOOT-0-state-change-feed-assessment.md`](ORD-BOOT-0-state-change-feed-assessment.md)，验收与实现证据见 [`ORD-BOOT-0-delivery-report.md`](ORD-BOOT-0-delivery-report.md) 与 `evidence/ORD-BOOT-0/`。
+>
+> **后发布修订注记（2026-09-11，ORD-BOOT-0.1）**：本文描述的 `limit >= 0` 与"未来 cursor 合法"是**已发布的 1.3.0 语义，保留于此作为历史记录，不回溯改写**。后续发布的 [`ORD-BOOT-0.1-state-change-feed-hardening-spec.md`](ORD-BOOT-0.1-state-change-feed-hardening-spec.md) **supersedes 本文 §5（future-cursor behavior）与 §7（allowed limit domain）**：`limit` 收紧为 `1..RESOURCE_LIMITS.maxStateChangePageItems`，`cursor > 全局 high-water` 现报 `INVALID_CURSOR`。本文其余条款继续有效。
 
 ## 1. 目的
 

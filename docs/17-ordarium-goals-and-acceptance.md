@@ -810,6 +810,14 @@ G16 触发条件"随时"满足，2026-08-29 会话决议解除休眠并实施完
 |---|---|---|
 | ORD-BOOT-0 变更订阅原语 | **已完成** | 见 `evidence/ORD-BOOT-0/`（delta `delta-ORDBOOT0-001-state-change-feed.md` + exit report） |
 
+## 16.12 ORD-BOOT-0.1（发布后加固）：StateChangeFeed 边界安全
+
+依据 [`docs/research/ORD-BOOT-0.1-state-change-feed-hardening-spec.md`](research/ORD-BOOT-0.1-state-change-feed-hardening-spec.md)（2026-09-11 冻结；复现与分类见 [`assessment`](research/ORD-BOOT-0.1-state-change-feed-hardening-assessment.md)）。对已发布的 `StateChangeFeed` 做最小边界加固，关闭三个缺陷：**A** `limit=0` 确定性活锁（`limit=0 ∧ 有匹配 ⇒ cursor 不前进 ∧ hasMore=true`）；**B** 未来 cursor 静默饥饿（`cursor > 全局 high-water` 被当作"无新内容"，两个自治消费者可互相停止观测）；**C** 显式页大小无资源上限。交付物：core `RESOURCE_LIMITS.maxStateChangePageItems = 1000`（默认页仍 100，单一资源真值）+ `limit` 域收紧为 `1..MAX`（0/负/小数/非 safe/超限 → `TypeError`）+ cursor 语义校验（语法解析后，`position > 全局 high-water` → `InvalidCursorError`，high-water 空库为 0；校验全局、非 namespace 局部，跨 filter cursor 语义不变）；`MemoryLedger`/`SqliteLedger` 双实现 parity；testing conformance 增 `limit=0`/`limit>MAX`/未来位置可移植断言。schema **保持 v4**（无表/列/迁移）、`OperationLedger` 源兼容、`HOST_CONTRACT_VERSION = 1` 不变。冻结不变量 **SCF-INV-8..10**：⑧进度安全页大小 ⑨无未来位置 ⑩资源有界观测。已知局限：不做 cursor/DB 身份绑定（`LedgerIdentityBinding = DEFER`，不新增 schema v5）；高水位校验不能探测"cursor 来自同水位更低的另一库"。验收 SCF-B01–B09 见 `evidence/ORD-BOOT-0.1/`。包版本 **patch 1.3.1**（分类论证见 0.1 delivery report §2）。
+
+| Item | 状态 | 说明 |
+|---|---|---|
+| ORD-BOOT-0.1 边界加固 | **已完成** | 见 `evidence/ORD-BOOT-0.1/`（delta `delta-ORDBOOT01-001-state-change-feed-hardening.md` + exit report） |
+
 ## 17. 首发端到端验收矩阵
 
 | 领域 | 必测场景 | 主要 Goal | 核心断言 |
@@ -824,7 +832,7 @@ G16 触发条件"随时"满足，2026-08-29 会话决议解除休眠并实施完
 | Cancellation | before/after dispatch | G3/G6 | before 可 cancelled，after 仍按 Provider fact/uncertain |
 | Operations | inspect/page/history/reconcile-only/no material/no auth | G4/G5 | query-only、脱敏、无 force retry |
 | Ledger | capability matrix、v1 migration、corrupt、busy/full/open failure、backup/reopen | G1/G2 | fail closed、单 canonical schema、无半迁移、无 memory fallback |
-| State feed | ordered observation、limit=1 no-gap、caught-up resume、restart、two writers、CAS loser ghost、namespace filter、malformed cursor、v3→v4 migration、crash/reopen | ORD-BOOT-0 | 提交可见 ⇔ 可观测；失败 CAS 无 feed 项；持久 cursor 跨重启有效；单一真值、零 payload 副本；跨独立本地 SQLite 客户端成立 |
+| State feed | ordered observation、limit=1 no-gap、caught-up resume、restart、two writers、CAS loser ghost、namespace filter、malformed cursor、v3→v4 migration、crash/reopen；limit=0 / limit>MAX 拒绝、未来 cursor 拒绝、当前 high-water 可续读、还原到低水位库拒绝 | ORD-BOOT-0 / 0.1 | 提交可见 ⇔ 可观测；失败 CAS 无 feed 项；持久 cursor 跨重启有效；单一真值、零 payload 副本；跨独立本地 SQLite 客户端成立；无活锁、无未来位置静默饥饿、显式分页有界 |
 | HMR | quiesce/new call/in-flight/reload | G3/G5 | drain 后 close，相同 version 可恢复 |
 | DSH | native pipeline、approval、render、parallel/restart | G5 | Host Authority 不被复制或绕过 |
 | Provider | durable/finite window、query/absence/cancel/fence/principal | G6 | 声明与真实能力一致，finite 过期停止 execute，失败时降级 |

@@ -1,4 +1,4 @@
-import { decodeOperationRecord, decodeStateRecord } from "./codec.js";
+import { RESOURCE_LIMITS, decodeOperationRecord, decodeStateRecord } from "./codec.js";
 import { InvalidCursorError, LedgerCorruptError } from "./errors.js";
 import type {
   ClaimRequest,
@@ -108,8 +108,14 @@ function assertStateChangeFilter(filter: StateChangeFilter): void {
 
 function resolveChangeLimit(limit: number | undefined): number {
   if (limit === undefined) return DEFAULT_PAGE_LIMIT;
-  if (!Number.isSafeInteger(limit) || limit < 0) {
-    throw new TypeError("state change filter limit must be a safe integer >= 0");
+  if (
+    !Number.isSafeInteger(limit) ||
+    limit < 1 ||
+    limit > RESOURCE_LIMITS.maxStateChangePageItems
+  ) {
+    throw new TypeError(
+      `state change filter limit must be a safe integer between 1 and ${RESOURCE_LIMITS.maxStateChangePageItems}`,
+    );
   }
   return limit;
 }
@@ -339,8 +345,14 @@ export class MemoryLedger implements OperationLedger, StateChangeFeed {
 
   async changes(filter: StateChangeFilter = {}, cursor?: string): Promise<StateChangePage> {
     assertStateChangeFilter(filter);
-    const after = cursor === undefined ? 0 : decodeStateChangeCursor(cursor);
     const bound = resolveChangeLimit(filter.limit);
+    const after = cursor === undefined ? 0 : decodeStateChangeCursor(cursor);
+    // Semantic validation against the ledger's own history (ORD-BOOT-0.1):
+    // a position beyond the highest known commit is not "caught up"; it
+    // signals a foreign/restored/corrupt cursor and must fail closed.
+    if (after > this.#stateChanges.length) {
+      throw new InvalidCursorError();
+    }
     const page: { position: number; record: StateRecord }[] = [];
     let hasMore = false;
     // Positions are contiguous 1..n, so resume at index === after.

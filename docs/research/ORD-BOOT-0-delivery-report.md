@@ -1,6 +1,8 @@
 # ORD-BOOT-0 交付报告：修订型 state 变更订阅
 
 > 交付日期 2026-09-11；目标 revision = workspace 1.3.0（基线 1.2.0 / HEAD `6fb9e95`）。规范见 [`ORD-BOOT-0-state-change-feed-spec.md`](ORD-BOOT-0-state-change-feed-spec.md)，审计见 [`assessment`](ORD-BOOT-0-state-change-feed-assessment.md)，机器证据见 `evidence/ORD-BOOT-0/`。
+>
+> **后发布修订注记（2026-09-11，ORD-BOOT-0.1）**：本报告记录的是 **1.3.0 的实际发布语义**——当时 `limit=0` 合法、未来 cursor 合法（本报告 §1 第 15 题即此口径），保留为历史证据、不回溯改写。二者随后被认定为边界缺陷（`limit=0` 确定性活锁、未来 cursor 静默饥饿），由 [`ORD-BOOT-0.1-delivery-report.md`](ORD-BOOT-0.1-delivery-report.md) 加固为 1.3.1。
 
 ## 1. 逐题回答
 

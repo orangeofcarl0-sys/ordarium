@@ -22,6 +22,13 @@ export declare const RESOURCE_LIMITS: Readonly<{
     maxStateSubjectLength: 128;
     maxStateRefs: 64;
     maxStateValueJsonBytes: 1048576;
+    /**
+     * Ceiling for one state-change page (ORD-BOOT-0.1). The default page size is
+     * 100; this is a fixed 10x envelope that keeps a single observation call from
+     * materializing an unbounded number of records. Per-item payload stays
+     * independently capped by maxStateValueJsonBytes.
+     */
+    maxStateChangePageItems: 1000;
 }>;
 /**
  * Decode and fully validate an OperationRecord. Any nested field damage,

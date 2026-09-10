@@ -12,6 +12,7 @@ import {
   LedgerNewerSchemaError,
   LedgerOpenFailedError,
   OrdariumError,
+  RESOURCE_LIMITS,
   decodeOperationRecord,
   decodeStateRecord,
   type ClaimRequest,
@@ -496,8 +497,16 @@ export class SqliteLedger implements OperationLedger, StateChangeFeed {
   async changes(filter: StateChangeFilter = {}, cursor?: string): Promise<StateChangePage> {
     this.#assertOpen();
     assertStateChangeFilter(filter);
-    const after = cursor === undefined ? 0 : decodeStateChangeCursor(cursor);
     const bound = resolveChangeLimit(filter.limit);
+    const after = cursor === undefined ? 0 : decodeStateChangeCursor(cursor);
+    // Semantic validation against the global high-water mark (ORD-BOOT-0.1):
+    // the cursor is a global, filter-independent position, so this compares
+    // against the whole ledger, not the requested namespace's last sequence.
+    // Concurrent commits only raise the mark, so a valid cursor cannot be
+    // falsely rejected; a restored/replaced ledger lowers it and fails closed.
+    if (after > this.#stateChangeHighWater()) {
+      throw new InvalidCursorError();
+    }
     const clauses = ["c.change_seq > ?"];
     const parameters: (number | string)[] = [after];
     if (filter.namespace !== undefined) {
@@ -704,6 +713,21 @@ export class SqliteLedger implements OperationLedger, StateChangeFeed {
       .get(operationId) as
       | { owner: string; fencing_token: number; expires_at: string; lease_revision: number }
       | undefined;
+  }
+
+  /**
+   * Highest committed change position, or 0 for an empty feed (ORD-BOOT-0.1).
+   * AUTOINCREMENT never reuses values, so under normal operation this only
+   * grows; a lower value than a previously issued cursor means the database
+   * was restored or replaced and the cursor must fail closed.
+   */
+  #stateChangeHighWater(): number {
+    const row = this.#prepare(
+      "SELECT MAX(change_seq) AS max_seq FROM ordarium_state_changes",
+    ).get();
+    const value = row?.max_seq;
+    if (value === null || value === undefined) return 0;
+    return this.#number(value);
   }
 
   #insertEvent(record: OperationRecord, serialized: string): void {
@@ -941,8 +965,14 @@ function assertStateChangeFilter(filter: StateChangeFilter): void {
 
 function resolveChangeLimit(limit: number | undefined): number {
   if (limit === undefined) return DEFAULT_PAGE_LIMIT;
-  if (!Number.isSafeInteger(limit) || limit < 0) {
-    throw new TypeError("state change filter limit must be a safe integer >= 0");
+  if (
+    !Number.isSafeInteger(limit) ||
+    limit < 1 ||
+    limit > RESOURCE_LIMITS.maxStateChangePageItems
+  ) {
+    throw new TypeError(
+      `state change filter limit must be a safe integer between 1 and ${RESOURCE_LIMITS.maxStateChangePageItems}`,
+    );
   }
   return limit;
 }

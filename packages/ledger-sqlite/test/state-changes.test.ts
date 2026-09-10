@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import {
   InvalidCursorError,
   LedgerMigrationFailedError,
+  RESOURCE_LIMITS,
   createStateStore,
   digestJson,
   type InvocationIdentity,
@@ -562,6 +563,138 @@ describe("ORD-BOOT-0 state change feed (SqliteLedger)", () => {
       });
     } finally {
       reopened.close();
+    }
+  });
+});
+
+function encodePosition(position: number): string {
+  return Buffer.from(JSON.stringify({ c: String(position) }), "utf8").toString("base64url");
+}
+
+describe("ORD-BOOT-0.1 page/cursor hardening (SqliteLedger)", () => {
+  it("SCF-B01: limit=0 is rejected (no deterministic livelock)", async () => {
+    const ledger = new SqliteLedger(freshPath("scf-b01"));
+    try {
+      await write(store(ledger), "alpha", "one", { n: 1 }, 0);
+      await expect(ledger.changes({ limit: 0 }, undefined)).rejects.toBeInstanceOf(TypeError);
+    } finally {
+      ledger.close();
+    }
+  });
+
+  it("SCF-B02: limit=MAX is accepted", async () => {
+    const ledger = new SqliteLedger(freshPath("scf-b02"));
+    try {
+      await write(store(ledger), "alpha", "one", { n: 1 }, 0);
+      const page = await ledger.changes({ limit: RESOURCE_LIMITS.maxStateChangePageItems }, undefined);
+      expect(page.changes.map(label)).toEqual(["alpha/one@1"]);
+    } finally {
+      ledger.close();
+    }
+  });
+
+  it("SCF-B03: limit=MAX+1 is rejected", async () => {
+    const ledger = new SqliteLedger(freshPath("scf-b03"));
+    try {
+      await write(store(ledger), "alpha", "one", { n: 1 }, 0);
+      await expect(
+        ledger.changes({ limit: RESOURCE_LIMITS.maxStateChangePageItems + 1 }, undefined),
+      ).rejects.toBeInstanceOf(TypeError);
+    } finally {
+      ledger.close();
+    }
+  });
+
+  it("SCF-B04: negative, fractional and unsafe limits are rejected", async () => {
+    const ledger = new SqliteLedger(freshPath("scf-b04"));
+    try {
+      await write(store(ledger), "alpha", "one", { n: 1 }, 0);
+      for (const limit of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1, Number.NaN, Number.POSITIVE_INFINITY]) {
+        await expect(ledger.changes({ limit }, undefined)).rejects.toBeInstanceOf(TypeError);
+      }
+    } finally {
+      ledger.close();
+    }
+  });
+
+  it("SCF-B05: a future cursor is refused instead of silently starving", async () => {
+    const ledger = new SqliteLedger(freshPath("scf-b05"));
+    try {
+      const target = store(ledger);
+      await write(target, "alpha", "one", { n: 1 }, 0);
+      await write(target, "alpha", "two", { n: 1 }, 0);
+      await write(target, "beta", "three", { n: 1 }, 0);
+      await expect(ledger.changes(undefined, encodePosition(4))).rejects.toBeInstanceOf(
+        InvalidCursorError,
+      );
+    } finally {
+      ledger.close();
+    }
+  });
+
+  it("SCF-B06: on an empty ledger cursor=0 is valid and cursor=1 is refused", async () => {
+    const ledger = new SqliteLedger(freshPath("scf-b06"));
+    try {
+      expect((await ledger.changes(undefined, encodePosition(0))).changes).toEqual([]);
+      await expect(ledger.changes(undefined, encodePosition(1))).rejects.toBeInstanceOf(
+        InvalidCursorError,
+      );
+    } finally {
+      ledger.close();
+    }
+  });
+
+  it("SCF-B07: the current high-water is a valid caught-up cursor and observes N+1", async () => {
+    const ledger = new SqliteLedger(freshPath("scf-b07"));
+    try {
+      const target = store(ledger);
+      await write(target, "alpha", "one", { n: 1 }, 0);
+      await write(target, "alpha", "two", { n: 1 }, 0);
+      const atWater = await ledger.changes(undefined, encodePosition(2));
+      expect(atWater.changes).toEqual([]);
+      expect(atWater.hasMore).toBe(false);
+      await write(target, "beta", "three", { n: 3 }, 0);
+      const observed = await ledger.changes(undefined, atWater.cursor);
+      expect(observed.changes.map(label)).toEqual(["beta/three@1"]);
+    } finally {
+      ledger.close();
+    }
+  });
+
+  it("SCF-B08: a cursor from a higher-water database is refused after restore/reset", async () => {
+    const high = new SqliteLedger(freshPath("scf-b08-hi"));
+    await write(store(high), "alpha", "one", { n: 1 }, 0);
+    await write(store(high), "alpha", "two", { n: 1 }, 0);
+    await write(store(high), "alpha", "three", { n: 1 }, 0);
+    const cursor = (await high.changes(undefined, undefined)).cursor;
+    high.close();
+
+    const low = new SqliteLedger(freshPath("scf-b08-lo"));
+    try {
+      await write(store(low), "beta", "one", { n: 1 }, 0);
+      await expect(low.changes(undefined, cursor)).rejects.toBeInstanceOf(InvalidCursorError);
+    } finally {
+      low.close();
+    }
+  });
+
+  it("SCF-B09: future-cursor validation uses the global high-water, not the namespace max", async () => {
+    const ledger = new SqliteLedger(freshPath("scf-b09"));
+    try {
+      const target = store(ledger);
+      for (const key of ["a1", "a2", "a3", "a4"]) {
+        await write(target, "alpha", key, { key }, 0);
+      }
+      for (const key of ["b5", "b6", "b7", "b8", "b9", "b10"]) {
+        await write(target, "beta", key, { key }, 0);
+      }
+      const filtered = await ledger.changes({ namespace: "alpha" }, encodePosition(8));
+      expect(filtered.changes).toEqual([]);
+      await write(target, "alpha", "a11", { key: "a11" }, 0);
+      const observed = await ledger.changes({ namespace: "alpha" }, encodePosition(8));
+      expect(observed.changes.map(label)).toEqual(["alpha/a11@1"]);
+    } finally {
+      ledger.close();
     }
   });
 });

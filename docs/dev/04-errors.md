@@ -37,13 +37,15 @@
 | `INPUT_TOO_LARGE` | 输入超过 1 MiB canonical JSON 上限 | 缩小输入；发生在任何持久化之前 |
 | `PERSISTED_VALUE_TOO_LARGE` | output/receipt 超过持久化上限 | dispatch 前可修正；dispatch 后按 uncertain 处理 |
 
+变更订阅的显式页大小域为 `1..RESOURCE_LIMITS.maxStateChangePageItems`（默认 100；`limit=0` 会确定性活锁，超上限超出资源包络）；违反以 `TypeError` 在读取前拒绝。
+
 ## 管理型 state
 
 | code | 含义 | 调用者动作 |
 |---|---|---|
 | `STATE_REVISION_CONFLICT` | state 修订在写入前被其他写者移动（含 0=创建时已存在） | 重读当前修订，合并意图后以新 `expectedRevision` 重试；不得盲目覆盖 |
 | `STATE_REF_NOT_FOUND` | refs 指向不存在的 operation / state 修订 | 先落被引对象，或移除悬空引用后重写 |
-| `INVALID_CURSOR` | 变更订阅（`StateChangeFeed.changes`）的 cursor 不是合法持久位置（非法编码/形状/数值） | 用上一次成功读取返回的 cursor；**绝不**当作"从零开始"——fail closed |
+| `INVALID_CURSOR` | 变更订阅（`StateChangeFeed.changes`）的 cursor 不是合法持久位置：非法编码/形状/数值，**或**语法合法但位置超出本账本全局 high-water（未来位置 / 库还原或替换后的失效位置，ORD-BOOT-0.1） | 用上一次成功读取返回的 cursor；**绝不**当作"从零开始"或"无新内容"——fail closed |
 
 ## 生命周期
 

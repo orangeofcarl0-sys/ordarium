@@ -4,6 +4,7 @@ import {
   InvalidCursorError,
   LedgerCapabilityRequiredError,
   MemoryLedger,
+  RESOURCE_LIMITS,
   createStateStore,
   supportsStateChangeFeed,
   type JsonValue,
@@ -104,5 +105,101 @@ describe("ORD-BOOT-0 state change feed (MemoryLedger)", () => {
     await expect(createStateStore({ ledger }).changes()).rejects.toBeInstanceOf(
       LedgerCapabilityRequiredError,
     );
+  });
+});
+
+function encodePosition(position: number): string {
+  return Buffer.from(JSON.stringify({ c: String(position) }), "utf8").toString("base64url");
+}
+
+describe("ORD-BOOT-0.1 page/cursor hardening (MemoryLedger)", () => {
+  async function seed(ledger: MemoryLedger, subjects: [string, string][]): Promise<void> {
+    const store = createStateStore({ ledger });
+    let revision = 0;
+    for (const [namespace, key] of subjects) {
+      revision += 1;
+      await create(store, namespace, key, { revision });
+    }
+  }
+
+  it("SCF-B01: limit=0 is rejected (no deterministic livelock)", async () => {
+    const ledger = new MemoryLedger();
+    await seed(ledger, [["alpha", "one"]]);
+    await expect(ledger.changes({ limit: 0 }, undefined)).rejects.toBeInstanceOf(TypeError);
+  });
+
+  it("SCF-B02: limit=MAX is accepted", async () => {
+    const ledger = new MemoryLedger();
+    await seed(ledger, [["alpha", "one"]]);
+    const page = await ledger.changes(
+      { limit: RESOURCE_LIMITS.maxStateChangePageItems },
+      undefined,
+    );
+    expect(page.changes.map(label)).toEqual(["alpha/one@1"]);
+  });
+
+  it("SCF-B03: limit=MAX+1 is rejected", async () => {
+    const ledger = new MemoryLedger();
+    await seed(ledger, [["alpha", "one"]]);
+    await expect(
+      ledger.changes({ limit: RESOURCE_LIMITS.maxStateChangePageItems + 1 }, undefined),
+    ).rejects.toBeInstanceOf(TypeError);
+  });
+
+  it("SCF-B04: negative, fractional and unsafe limits are rejected", async () => {
+    const ledger = new MemoryLedger();
+    await seed(ledger, [["alpha", "one"]]);
+    for (const limit of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      await expect(ledger.changes({ limit }, undefined)).rejects.toBeInstanceOf(TypeError);
+    }
+  });
+
+  it("SCF-B05: a future cursor is refused instead of silently starving", async () => {
+    const ledger = new MemoryLedger();
+    await seed(ledger, [["alpha", "one"], ["alpha", "two"], ["beta", "three"]]);
+    await expect(ledger.changes(undefined, encodePosition(4))).rejects.toBeInstanceOf(
+      InvalidCursorError,
+    );
+  });
+
+  it("SCF-B06: on an empty ledger cursor=0 is valid and cursor=1 is refused", async () => {
+    const ledger = new MemoryLedger();
+    expect((await ledger.changes(undefined, encodePosition(0))).changes).toEqual([]);
+    await expect(ledger.changes(undefined, encodePosition(1))).rejects.toBeInstanceOf(
+      InvalidCursorError,
+    );
+  });
+
+  it("SCF-B07: the current high-water is a valid caught-up cursor and observes N+1", async () => {
+    const ledger = new MemoryLedger();
+    await seed(ledger, [["alpha", "one"], ["alpha", "two"]]);
+    const atWater = await ledger.changes(undefined, encodePosition(2));
+    expect(atWater.changes).toEqual([]);
+    expect(atWater.hasMore).toBe(false);
+    await create(createStateStore({ ledger }), "beta", "three", { n: 3 });
+    const observed = await ledger.changes(undefined, atWater.cursor);
+    expect(observed.changes.map(label)).toEqual(["beta/three@1"]);
+  });
+
+  it("SCF-B09: future-cursor validation uses the global high-water, not the namespace max", async () => {
+    const ledger = new MemoryLedger();
+    await seed(ledger, [
+      ["alpha", "a1"],
+      ["alpha", "a2"],
+      ["alpha", "a3"],
+      ["alpha", "a4"],
+      ["beta", "b5"],
+      ["beta", "b6"],
+      ["beta", "b7"],
+      ["beta", "b8"],
+      ["beta", "b9"],
+      ["beta", "b10"],
+    ]);
+    // Global max = 10, alpha max = 4: reading alpha from cursor 8 is legal.
+    const filtered = await ledger.changes({ namespace: "alpha" }, encodePosition(8));
+    expect(filtered.changes).toEqual([]);
+    await create(createStateStore({ ledger }), "alpha", "a11", { n: 11 });
+    const observed = await ledger.changes({ namespace: "alpha" }, encodePosition(8));
+    expect(observed.changes.map(label)).toEqual(["alpha/a11@1"]);
   });
 });
