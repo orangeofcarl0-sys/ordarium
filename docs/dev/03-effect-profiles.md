@@ -1,69 +1,220 @@
-# 03 · Effect Profiles
+# 03 · Effect profiles
 
-Profile 是对 **Action 与其 Provider 事实**的能力描述，不是安全等级分数。选错的代价很具体：把没有恢复原语的 Provider 标成 `idempotent`，崩溃后你得到的保护比想象的少。
+Effect profile 描述 **Action + Provider 真正具备的恢复能力**。
 
-## 决策树
+它不是成熟度等级，也不是“安全分数”。
 
-```mermaid
-flowchart TD
-    SIDE{"有外部写副作用？"}
-    SIDE -->|否| RO["read-only"]
-    SIDE -->|是| MANAGED{"接受 Ordarium 托管恢复？"}
-    MANAGED -->|否| UM["unmanaged（逃生口，不承诺恢复）"]
-    MANAGED -->|是| QUERY{"Provider 可按稳定业务键查询？"}
-    QUERY -->|是| REC["reconcilable"]
-    QUERY -->|否| IDEM{"Provider 真正尊重稳定 operation key？"}
-    IDEM -->|是| ID["idempotent"]
-    IDEM -->|否| GUARD["guarded"]
+## 快速选择
+
+| Provider 能力 | 选择 |
+|---|---|
+| 无外部副作用 | `readOnly()` |
+| 有副作用，但没有 durable idempotency，也无法权威查询 | `guarded()` |
+| 真正接受稳定 operation key | `idempotent()` |
+| 可以权威查询外部结果 | `reconcilable()` |
+| 明确退出 managed crash/restart 语义 | `unmanaged()` |
+
+原则：选择**与现实能力一致的最窄 profile**。
+
+## `readOnly()`
+
+```ts
+effect: effects.readOnly()
 ```
 
-## 逐项说明
+适合纯计算/查询。
 
-### `effects.readOnly()`
+- Runtime 不要求 Action authorization；
+- volatile ledger 可以合法使用；
+- replay 可以重新执行；
+- 不宣称任何 side-effect recovery。
 
-查询、纯计算。可重做；不需要 durable 恢复。隐式允许授权。**纯读取工具通常不需要 Ordarium**——需要统一身份/审计/结果复用时才用。
+不要为了绕过 durable gate 把 write 标成 read-only。
 
-### `effects.guarded()`
+## `guarded()`
 
-有副作用但 Provider 无恢复原语。行为：准入 → dispatch → **结果不明即停在 `uncertain`，绝不盲重试**。这是"诚实下限"，不是低人一等。
+```ts
+effect: effects.guarded()
+```
 
-### `effects.idempotent()`
+适合：
 
-Provider 对稳定 operation key 真正幂等（默认视为 durable 窗口）。有限窗口显式声明：
+```text
+确实会产生外部副作用
++
+Provider 无稳定幂等键
++
+Provider 无权威结果查询
+```
+
+一旦已经可能 dispatch，而本地又无法证明结果：
+
+```text
+uncertain
+```
+
+这不是失败，而是正确状态。
+
+此时 blind retry 反而是不安全行为。
+
+## `idempotent()`
+
+Durable window：
+
+```ts
+effect: effects.idempotent()
+```
+
+Finite window：
 
 ```ts
 effect: effects.idempotent({
-  window: { kind: "finite", expiresAfterMs: 3_600_000 },
-}),
+  window: {
+    kind: "finite",
+    expiresAfterMs: 15 * 60_000,
+  },
+})
 ```
 
-**finite window 的冻结语义**：deadline 在 operation 首次创建时计算一次并持久化（`idempotencyExpiresAt`）。重启、重试、重载都**不续期**；过期后禁止再执行，只能查询或保持 `uncertain`（`IDEMPOTENCY_EXPIRED`）。
+只有 Provider 真正接受 `context.idempotencyKey` 时才使用。
 
-### `effects.reconcilable(...)`
+Finite window 的 deadline：
 
-Provider 可按业务键查询。恢复时**先查询**：只有 authoritative 证据才落 `reconciled`；`absent + retrySafe` 允许正常运行时重发（运维的 reconcile-only 永远不会）。可选叠加幂等窗口与取消：
+- Operation 首次创建时冻结；
+- restart 不续期；
+- replay 不续期；
+- takeover 不续期；
+- reconcile 不续期。
+
+过期后，Ordarium 不再把 same-key redispatch 当成安全路径。
+
+## `reconcilable()`
 
 ```ts
 effect: effects.reconcilable({
-  idempotencyWindow: { kind: "durable" },
-  cancellable: true,   // 声明后才能实现 cancel() 钩子
-}),
+  cancellable: false,
+})
 ```
 
-带 `cancellable` 的 Action 可以实现 `cancel(input, context)`——它只是 best-effort 请求，不能自行宣告取消成功；dispatch 后的最终事实仍由查询决定。
+必须实现 `reconcile()`：
 
-### `effects.unmanaged()`
+```ts
+async reconcile(input, context) {
+  const external = await provider.lookup(context.operationId);
 
-显式退出托管恢复。仍记录 dispatch 与不确定性，但不承诺 crash/restart 恢复。迁移期的逃生口，不要写进"安全模式"的宣传。
+  if (external.done) {
+    return { status: "succeeded", value: external.value };
+  }
 
-## 配对检查（写测试时）
+  if (external.failed) {
+    return {
+      status: "failed",
+      error: {
+        code: "PROVIDER_REJECTED",
+        message: "Provider rejected operation",
+      },
+    };
+  }
 
-`@ordarium/testing` 提供交叉校验：声明与 profile 不匹配会在接线前被拒绝（例如 opaque Provider 配 `idempotent()` 直接 throw）。见 [09](09-testing.md#provider-conformance)。
+  if (external.absent) {
+    return { status: "absent", retrySafe: true };
+  }
 
-## 常见错配
+  return { status: "unknown" };
+}
+```
 
-| 你写的 | Provider 实际 | 结果 |
-|---|---|---|
-| `idempotent()` | 忽略幂等键 | 崩溃后可能重复副作用——Ordarium 无法证明 |
-| `reconcilable()` | 查询是最终一致的假 absent | 恢复保持 `uncertain`（不重发）——安全但要知道 |
-| finite 窗口 | 键实为永久 | 过期后白白停止执行——声明 durable 即可 |
+允许的 reconcile outcome：
+
+```text
+succeeded
+failed
+absent { retrySafe }
+pending
+unknown
+```
+
+Recovery 先 query。
+
+`absent` 只有在：
+
+```text
+retrySafe = true
+```
+
+且相应 idempotency window 仍有效时，才可能允许**正常 runtime path**重做。
+
+### `reconcileOnly`
+
+Operator 的 `reconcileOnly` 永远不 dispatch `execute()`。
+
+即使 query 证明 absent + retrySafe，也只是返回 query-only 语义；真正 redispatch 仍由 normal runtime path 决定。
+
+### 可选 idempotency window
+
+```ts
+effects.reconcilable({
+  idempotencyWindow: { kind: "durable" },
+})
+```
+
+### 可选 cancel
+
+如果 Action 实现 `cancel()`：
+
+```ts
+effects.reconcilable({
+  cancellable: true,
+})
+```
+
+否则 Action 定义会被拒绝。
+
+## `unmanaged()`
+
+```ts
+effect: effects.unmanaged()
+```
+
+这是显式 weak-mode / migration opt-out。
+
+它不获得 managed crash/restart 保证，也不应该被文档宣传成“安全副作用模式”。
+
+## Authorization
+
+| Profile | Action authorization required? |
+|---|---:|
+| read-only | no |
+| guarded | yes |
+| idempotent | yes |
+| reconcilable | yes |
+| unmanaged | no |
+
+## Ledger requirement
+
+Managed write 需要 ledger 提供：
+
+- crash durability；
+- semantic CAS；
+- live lease；
+- semantic history；
+- 覆盖部署拓扑的 coordination。
+
+不足时在 Provider 调用之前返回：
+
+```text
+LEDGER_CAPABILITY_REQUIRED
+```
+
+## 常见错误
+
+不要：
+
+- 因为“重试通常没问题”就用 `idempotent`；
+- Provider lookup 不是权威的，却用 `reconcilable`；
+- dispatch 后 timeout 就写成 ordinary `failed`；
+- restart 时延长 finite window；
+- `guarded` 外面再套 host-level blind retry；
+- 根据 HTTP method 猜 Provider guarantee。
+
+Profile 是合同，不是愿望。

@@ -1,50 +1,155 @@
-# 10 · 生命周期与恢复
+# 10 · Lifecycle & recovery
 
-## Runtime 生命周期
+Ordarium Runtime lifecycle 单调前进：
 
-```mermaid
-stateDiagram-v2
-    [*] --> accepting
-    accepting --> quiescing: quiesce()/dispose()
-    quiescing --> draining: unregister 后有界等待 in-flight
-    draining --> closing: 完成/超时 → abort 剩余 → durable handoff
-    closing --> closed: ledger 关闭
+```text
+accepting
+→ quiescing
+→ draining
+→ closing
+→ closed
 ```
 
-- `quiesce()` 之后新调用得到 `RUNTIME_QUIESCING`，ledger 零写入；
-- dispose 固定序：**quiesce → unregister → 有界 drain（默认一个租约期）→ abort 剩余 → durable handoff → 吸收迟到回调 → close**；
-- handoff 语义：dispatch 前的调用落 `cancelled`，可能已 dispatch 的落 `uncertain`（`runtime-dispose-handoff`）——挂死的 Action 迟到返回不会造成未处理拒绝，其终态写入被 fence 验证拒绝；
-- 硬杀进程跳过 drain——靠 durable 恢复，语义等价。
+## Quiesce
 
-## 崩溃检查点矩阵
+```ts
+await runtime.quiesce();
+```
 
-| 崩溃位置 | 可知事实 | 恢复行为 |
-|---|---|---|
-| dispatch 前（claim 后） | Provider 肯定未调用 | 同身份重进即可 |
-| dispatched 落盘后、请求前 | 可能调用 | 进入恢复，**不当普通失败** |
-| Provider 执行中/响应丢失 | 结果未知 | 按能力查询或同键重发；否则 `uncertain` |
-| Provider 成功后、终态前 | 外部可能已成功 | 同身份查询/恢复，不建新 operation |
-| 终态落盘后 | 完成 | 直接复用结果 |
+之后的新 invocation：
 
-恢复在**同一 Action 调用再次进入时惰性发生**——Ordarium 不保存原始输入，不会后台重放。
+```text
+RUNTIME_QUIESCING
+```
 
-## 恢复决策（唯一评估器）
+已经在执行的工作不会立刻被 abort。
 
-顺序固定：有 `reconcile()` 先查询 → `absent+retrySafe` 且在 frozen deadline 内允许重发（仅 normal 模式）→ 无查询但 operation-key 幂等且未过期 → 同键重发 → 其余保持 `uncertain`。finite deadline 过期后执行被 `IDEMPOTENCY_EXPIRED` 拒绝——重启/重试不续期。
+## Dispose
 
-时钟异常（跳变/停顿）下的保证：租约比较使用与 ledger 一致的时钟源；无法证明唯一 owner 时 fail closed / uncertain。
+```ts
+await runtime.dispose({
+  drainMs: 5_000,
+});
+```
 
-## 宿主职责（合同项）
+流程：
 
-1. **提供再入路径**：恢复在同一 Action 调用再次进入时惰性发生——宿主必须保证同身份调用可再入（工具重放，或经 `recoveryMaterial` 解析原始材料），否则已 dispatch 的副作用将永远停在 `uncertain`。
-2. **处理 `uncertain` 是显式合同**：宿主必须消费 uncertain 语义——呈现给操作者并经运维面 `reconcile`（只查询，永不 execute）处置、按 Provider 能力自行查询、或显式挂起待人审。**不得把 `uncertain` 当失败盲目重试**——那是 OpenManus 式文本劝说的反面教材（见研究档案 01 §5）。
-3. **进程退出走 dispose 字面序**：quiesce → unregister → drain → close（见上）；硬杀等价于跳过 drain，由 durable 恢复兜底，语义不变。
+1. quiesce；
+2. 有界 drain；
+3. abort 剩余工作；
+4. 对仍 in-flight 的 Operation 做 durable handoff；
+5. 吸收 late callback；
+6. close ledger；
+7. lifecycle → `closed`。
 
-## 数据版本
+如果工作还没 dispatch，可以 durable cancel。
 
-- 打开旧 v1 数据库自动**事务性迁移**到 v2（`LEDGER_MIGRATION_FAILED` 时库保持完整 v1，可排查后重试）；
-- `user_version` 高于支持 → `LEDGER_NEWER_SCHEMA`，不自动降级。
+如果外部副作用已经**可能** dispatch，则不能假装 abort 抹掉了外部世界的变化；handoff 会保留相应 uncertainty。
 
-## Action 版本纪律
+## Recovery 入口
 
-`name + version` 是跨重载/重启的语义边界。输入/输出 schema、key 生成、effect profile、恢复语义有不兼容变化 → 必须升 version。同名同版本但元数据漂移 → `CONTRACT_DRIFT` 诊断失败（合同指纹只发现意外漂移，不替代你的版本责任）。
+下一次相同 Operation identity 到来时，不创建“另一项工作”，而是加载原记录并进入统一 recovery evaluator。
+
+```text
+有 reconcile()？
+    yes
+    → query Provider
+
+    no
+    → operation key 仍可安全使用？
+         yes + normal mode + window 未过期
+         → same-key redispatch
+
+         no
+         → stay uncertain
+```
+
+## Reconcile outcome
+
+### `succeeded`
+
+保存成功证据并返回 value。
+
+### `failed`
+
+保存 sanitized failure evidence。
+
+### `pending` / `unknown`
+
+保持不确定，等待未来证据。
+
+### `absent`
+
+Provider 说“没有这项外部结果”也不自动意味着可以重做。
+
+只有：
+
+```text
+retrySafe = true
+```
+
+且其他条件（例如 finite idempotency window）仍满足时，normal runtime 才可能允许 redispatch。
+
+## Finite idempotency deadline
+
+`idempotencyExpiresAt` 在 Operation 第一次创建时计算并冻结。
+
+以下操作都不会续期：
+
+```text
+replay
+restart
+takeover
+reconcile
+```
+
+过期后 same-key redispatch 不再被视为安全。
+
+## `reconcileOnly`
+
+Operator recovery 使用同一个 evidence evaluator，但锁死为 query-only mode。
+
+```text
+reconcileOnly
+→ 永远不 dispatch Action.execute()
+```
+
+这保证运维查询不会悄悄变成新的副作用执行入口。
+
+## 并发恢复
+
+Claim 使用：
+
+- semantic revision CAS；
+- live lease；
+- monotonic fencing token。
+
+所有权切换之后，旧 worker 不能继续以旧 fencing token 提交 semantic state。
+
+## 为什么必须有 `uncertain`
+
+外部 API 可能：
+
+```text
+已经 commit
+→ response 丢失
+→ 本地不知道
+```
+
+如果 Provider 没有可靠幂等或权威查询，系统无法诚实证明 succeeded，也无法证明 failed。
+
+所以：
+
+```text
+uncertain
+```
+
+本身就是正确 durable state。
+
+更高层宿主可以：
+
+- 等待证据；
+- 提示 operator；
+- 进入人工复核；
+
+但不应该通过新 callId 把未知结果“洗掉”。

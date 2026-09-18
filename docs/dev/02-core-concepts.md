@@ -1,68 +1,187 @@
-# 02 · 核心概念
+# 02 · Core concepts
 
-## 五个对象，别混
+理解 Ordarium 最重要的一点，是不要把下面五个对象混在一起。
 
-| 对象 | 是什么 | 基数 |
-|---|---|---|
-| **Action** | 可版本化的副作用能力定义（`ticket.create@1`） | 一个 Action 产生多个 operation |
-| **Invocation** | 宿主投递的一次工具调用 | 多次 replay 可汇合到同一 operation |
-| **Operation** | Ordarium 认定的稳定业务工作（去重单位） | 一个 operation 可有多个 attempt |
-| **Attempt** | 一次持久化 `dispatched` 后的 Provider 尝试 | 只有证明安全时才增加 |
-| **External effect** | Provider 里真实发生的业务变化 | 目标：一个 operation 最多一项（能否证明取决于 Provider） |
+| 对象 | 含义 |
+|---|---|
+| **Action** | 可版本化的能力定义 |
+| **Invocation** | 宿主投递的一次调用 |
+| **Operation** | 稳定的逻辑工作身份；去重与恢复单位 |
+| **Attempt** | durable dispatch 之后的一次 Provider 执行 |
+| **External effect** | Provider 系统里真正发生的业务变化 |
 
-## Operation 身份怎么来
+多个 replayed Invocation 可以汇合到同一个 Operation。一个 Operation 只有在恢复合同证明安全时，才可能拥有多个 Attempt。
 
-默认身份 = `source + scope + callId`（宿主提供）；你的 Action 也可以用 `key(input, identity)` 声明**业务键**（完全替代默认身份）：
+## Operation identity
+
+没有自定义 `key()` 时：
+
+```text
+logical key = source ␀ scope ␀ callId
+
+operationId =
+  digest(
+    action name,
+    action version,
+    logical-key digest
+  )
+```
+
+`inputDigest` 单独保存。
+
+因此：
+
+```text
+同 logical key + 同 input
+→ 同一项工作的 replay
+
+同 logical key + 不同 input
+→ conflict
+
+Action 合同在同 name/version 下漂移
+→ conflict
+```
+
+Ordarium 保存 digest，而不是 raw input 或 raw business key。
+
+## InvocationIdentity
 
 ```ts
-const reserve = defineAction({
-  /* ... */
-  key: (input) => `sku:${input.sku}`,   // 跨会话/跨宿主都汇合到同一 operation
-  effect: effects.guarded(),
-  async execute(input) { /* ... */ },
-});
+interface InvocationIdentity {
+  source: string;
+  scope: string;
+  callId: string;
+  rootCallId?: string;
+  actor?: string;
+  lineage?: string[];
+}
 ```
 
-推导链：`logicalKey → SHA-256 → operationId = op_hash(name+version+keyDigest)[0:40]`。同一 `operationId` 再来时，输入摘要不一致会得到 `OPERATION_CONFLICT`——绝不静默创建第二项工作。
+Managed write 必须有稳定 identity。
 
-多 agent 语义：`rootCallId`/`lineage` 只作审计关联，**不参与去重**——同一根调用下的两个 subagent 兄弟任务是两个 operation（这是特性，不是缺陷）。
+`read-only` / `unmanaged` 的直接 core 调用可以获得进程内生成的 identity，但真正的宿主适配应始终注入稳定宿主身份。
 
-## 状态机
+**Identity 不是 Authorization。**
 
-```mermaid
-stateDiagram-v2
-    [*] --> proposed
-    proposed --> authorized: allow（持久化分类证据）
-    proposed --> denied: deny（终态）
-    authorized --> cancelled: dispatch 前取消
-    authorized --> claimed: CAS claim + 租约 + fence
-    claimed --> dispatched: durable 写入（attempt+1）──然后才调 Provider
-    dispatched --> succeeded: 输出通过校验并持久化
-    dispatched --> failed: 可证明的失败
-    dispatched --> uncertain: 结果未知——诚实停止
-    dispatched --> claimed: 租约到期恢复
-    uncertain --> claimed: 恢复接管
-    claimed --> reconciled: Provider 查询证明成功/失败
+## Authorization
+
+```ts
+{
+  decision: "allow" | "deny",
+  kind:
+    | "host-admission"
+    | "policy-decision"
+    | "human-approval",
+  source: string,
+  reason?: string
+}
 ```
 
-三条承重规则：
+`guarded` / `idempotent` / `reconcilable` 需要 authorization evidence。
 
-1. **`dispatched` 先于 Provider 落盘**——崩溃后我们能区分"肯定没发出去"和"可能发出去了"；
-2. **`uncertain` 是一等状态**，不是异常：外部结果无法证明时的正确答案。重复调用不会盲重试；
-3. **终态可直接复用**：succeeded 的结果从 ledger 读回，不再执行。
+第一份 durable decision 会成为 Operation 的一部分。后续对同一 Operation 提交矛盾证据会 fail closed：
 
-## 并发：claim、租约、fence
+```text
+AUTHORIZATION_CONFLICT
+```
 
-一个 operation 同时只有一个有效 owner。执行者通过 CAS 获得 claim（含**单调递增 fencing token**），执行期间以轻量心跳续租约——心跳**不产生任何语义写入**。租约丢失时执行中的 Action 会被 abort，旧 owner 无法写入终态。两个进程竞争同一工作时，只有一个能进入 dispatch。
+用于 `inspect/reconcileOnly` 的 OperatorAuthorization 是另一条独立边界。
 
-## Secret 边界
+## Operation state
 
-ledger **保存**：Action 名/版本、合同指纹、identity、各种 SHA-256 摘要、分类授权证据、状态/attempt/fence、通过校验的 output 与 receipt、安全错误码。
+当前 semantic states：
 
-ledger **永不保存**：原始输入、原始业务键、凭据、异常堆栈、未筛选的 Provider 响应。Provider 主体最多以摘要形式持久化（换账号恢复会被 `PRINCIPAL_CONFLICT` 拒绝）。单个 output/receipt 上限默认 1 MiB。
+```text
+proposed
+authorized
+denied
+claimed
+dispatched
+succeeded
+failed
+cancelled
+uncertain
+reconciled
+```
 
-> 含义：写 Action 时把 output/receipt 当审计数据对待——不要往里放 token 或未脱敏响应。
+`LiveLease` 与 semantic history 分离。
 
-## 与宿主的分工
+Heartbeat 只更新执行所有权的 liveness，不会伪造新的业务修订。
 
-宿主拥有 Agent Loop、审批 UI、凭据、沙箱、会话；Ordarium 只拥有"这项已获准的工作以什么身份、由谁、在什么证据下触达外部世界"。不复制、不绕过。（历史正文以 DSH 为宿主示例；该适配已 legacy，结论对任意宿主成立。）
+## Claim / Lease / Fencing
+
+Claim 包含：
+
+```text
+owner
+fencingToken
+acquiredAt
+resumeFrom
+```
+
+ledger 在 claim 时原子创建/更新 live lease。
+
+当旧 lease 失效、所有权转移后，旧 worker 的 fencing token 不能继续提交 semantic transition。
+
+## Contract fingerprint
+
+`contractFingerprint` 对以下信息做确定性摘要：
+
+- Action name/version；
+- input/output JSON Schema；
+- effect profile；
+- `key/reconcile/cancel/receipt` 是否存在。
+
+它**不 hash 函数源码**，也不替代 Action author 的 version 责任。
+
+## 两类持久数据
+
+### Operation evidence
+
+用于回答“这项副作用工作发生了什么”：
+
+- identity；
+- Action name/version/fingerprint；
+- input/key/principal digests；
+- effect/idempotency metadata；
+- authorization；
+- state/revision/attempt/fence；
+- claim snapshot；
+- safe output/receipt/error/uncertainty/reconciliation。
+
+### Management state
+
+用于保存宿主定义的 `(namespace, key)` revision chain。
+
+Ordarium 负责 shape、CAS 与 reference existence，不解释其业务语义。
+
+见 [11 · Management state](11-state.md)。
+
+## Secret boundary
+
+Ledger 不是 credential vault。
+
+不要把 secret 放进 Action output、receipt 或 State value。
+
+Operation record 设计上不保存：
+
+- raw input；
+- raw logical/business key；
+- credential；
+- environment variable；
+- arbitrary stack；
+- 未过滤 Provider request/response。
+
+Provider principal continuity 只持久化 `{namespace, subject}` 的 digest。
+
+## 最重要的原则
+
+```text
+有足够证据
+→ 推导允许的下一步
+
+没有足够证据
+→ uncertain / fail closed
+```
+
+Ordarium 不把“应该成功了”当成 durable truth。

@@ -1,56 +1,169 @@
-# 06 · Ledger 选择
+# 06 · Ledgers
 
-SQLite 不是 core 的语义依赖——core 只认 `OperationLedger` 端口 + `LedgerCapabilities`。选 ledger = 选你能诚实承诺的能力。
+Runtime 依赖的是：
 
-## 一种时间线，三种墨水
-
-同一账本引擎、同一套 revision/CAS 机器，承载三种 record kind，各自的契约不同：
-
-| kind | 语义 | 保留 | 写门槛 |
-|---|---|---|---|
-| 证据型 operation（现状） | "世界被改变"（承诺） | 永久，verdict 永不丢 | 授权门控 + 内容寻址 |
-| 管理型 state（[11](11-state.md)） | "当前意图/计划" | append-only，修订链 + **持久提交序观测位点**（`StateChangeFeed`） | 身份 + 授权证据，revision CAS |
-| 对话型 message | "发生过通信" | 尚未实现（需求拉动，Stage 2） | —— |
-
-管理型与证据型同受 `LEDGER_FULL` fail-closed 保护：淘汰只会作用于（未来的）对话型，永不挤爆审计账本。任何新 kind 若需要 revision/CAS 之外的新并发机制，就是另一个引擎，不进这扇门。
-
-## 两个内置实现
-
-| | `SqliteLedger`（默认） | `MemoryLedger` |
-|---|---|---|
-| 能力 | crash-durable、local-multi-process、语义 CAS、活租约、语义历史、state 修订链 | volatile、single-isolate、语义 CAS、活租约、语义历史、state 修订链 |
-| 变更订阅 | `stateChangeFeed: true`（cursor 跨进程重启有效） | `stateChangeFeed: true`（cursor 仅进程内有效） |
-| 合法用途 | managed 副作用的默认本地 authority | 测试、纯读取、显式 unmanaged、进程内 state 观测 |
-| 不承诺 | 网络文件系统、多主机共享、外部 Provider 的恰好一次 | 崩溃/重启恢复、跨进程 claim、cursor 跨进程存活 |
-
-## 能力门
-
-Runtime 在**创建 operation 之前**检查 ledger 声明是否覆盖 profile 与部署拓扑。不覆盖 → `LEDGER_CAPABILITY_REQUIRED`，Provider 不会被调用，**且绝不静默降级到内存**。同理：durable ledger 打开失败也是 fail closed。
-
-测试与嵌入式弱模式可显式选择 volatile 托管：
-
-```ts
-import { OrdariumRuntime } from "@ordarium/core";
-
-const runtime = new OrdariumRuntime({ allowVolatileLedger: true });
-// 明确承认：没有 crash/restart 保证。生产 managed 写不要这么做。
+```text
+OperationLedger
++
+LedgerCapabilities
 ```
 
-## 默认数据库与部署拓扑
+不是 SQLite 类名。
 
-- 路径由宿主决定（DSH 适配的历史默认是 `$DSH_HOME/ordarium/operations.sqlite`，未设置时为 `~/.dsh/ordarium/operations.sqlite`）；WAL 模式会有受同一生命周期管理的 sidecar 文件；
-- 默认嵌入式部署声明 `local-multi-process` 拓扑：多个本机进程可打开同一文件竞争 operation（真实双进程夹具在 CI 里验证）。跨主机/网络文件系统不在承诺内。
+SQLite 是 reference durable implementation，而不是 Action 语义的一部分。
 
-## 自定义 ledger（高级）
+## Capability contract
 
-实现完整的 `OperationLedger`（能力声明、语义 CAS + fence 验证、原子 claim+lease、轻量续租、cursor 分页、v2 记录 codec）并通过 conformance 后即可替换。**不要**建立第二套记录/状态语义。
+```ts
+interface LedgerCapabilities {
+  durability:
+    | "volatile"
+    | "crash-durable";
 
-state 与变更订阅是**加法能力**，不是 `OperationLedger` 的必需成员：想提供它们就实现 `changes()` 并声明 `LedgerCapabilities.stateChangeFeed: true`（`supportsStateChangeFeed` 是 fail-closed 入口，消费方用 `StateStore.changes` 时能力不足会得到 `LEDGER_CAPABILITY_REQUIRED`）。声明了就必须满足可移植 conformance 断言：有序观测、页大小不变性、`limit` 域 `1..1000`、`limit=0` 拒绝、超出全局高水位的 cursor 拒绝、当前高水位可续读。
+  coordination:
+    | "single-isolate"
+    | "single-process-exclusive"
+    | "local-multi-process";
 
-## 运维注意
+  semanticCas: true;
+  liveLease: boolean;
+  semanticHistory: boolean;
+  stateRevisions: boolean;
+  stateChangeFeed?: boolean;
+}
+```
 
-- 无自动 GC：terminal operation 不自动删除——删除会重新打开重复副作用的窗口；
-- 备份活跃库需先 `PRAGMA wal_checkpoint(TRUNCATE)` 或关闭全部连接（CI 中验证）；
-- 打开旧 v1/v2/v3 库会沿迁移链**自动事务性迁移**到当前库 schema（**v4**；失败回滚，库保持完整旧版）；
-- 并发 open 撞写锁由构造器**内置有界退避**吸收：默认 5 次 × 100ms（最坏约 400ms 后抛 `LEDGER_BUSY`），仅对 BUSY 重试——corrupt/更新 schema 等错误照旧一次性 fail-closed；`openRetry: { attempts: 1 }` 可退回即失败语义；
-- 恢复旧备份可能丢失备份点之后的 operation 身份——恢复后先与 Provider 事实 reconcile 再恢复执行。
+Runtime 按 capability fail closed，不会根据 implementation 名字猜能力。
+
+## `SqliteLedger`
+
+默认的本地 managed deployment 选择。
+
+提供：
+
+- crash-durable Operation/State records；
+- semantic CAS；
+- atomic claim + lease；
+- live lease renewal；
+- 本机多进程 coordination；
+- Operation history；
+- revisioned state；
+- state refs；
+- durable state-change ordering/cursor；
+- forward migration。
+
+当前：
+
+```text
+SQLite user_version = 4
+```
+
+## `MemoryLedger`
+
+适合：
+
+- 单元测试；
+- single-isolate read-only；
+- 明确的 volatile experiment；
+- conformance harness。
+
+它实现相同 logical port，但 capability 明确声明：
+
+```text
+durability = volatile
+coordination = single-isolate
+```
+
+因此不能拿它证明 restart durability。
+
+## Managed write gate
+
+在创建 managed Operation 之前，Runtime 会检查：
+
+```text
+Action 要求
++
+deploymentCoordination
++
+LedgerCapabilities
+```
+
+能力不足：
+
+```text
+LEDGER_CAPABILITY_REQUIRED
+```
+
+Provider 不会被调用。
+
+SQLite 打不开时，也**不会**自动 fallback 到 `MemoryLedger`。
+
+## Deployment topology
+
+```ts
+new OrdariumRuntime({
+  ledger,
+  deploymentCoordination: "local-multi-process",
+});
+```
+
+Direct embedded core 默认：
+
+```text
+single-isolate
+```
+
+声明的 deployment requirement 不能超过 ledger capability。
+
+## SQLite migrations
+
+Reference ledger 负责前向迁移。
+
+当前历史：
+
+```text
+private v1 → current
+v2 → v4
+v3 → v4
+```
+
+v4 增加 durable state-change ordering。
+
+v3 历史 revision 当时没有记录全局 commit order，因此 migration 只能按确定性规则生成 synthetic backfill order；不能把它描述成原始历史提交顺序。
+
+打开未来 schema：
+
+```text
+LEDGER_NEWER_SCHEMA
+```
+
+Migration 失败：
+
+```text
+LEDGER_MIGRATION_FAILED
+```
+
+并保持事务 rollback。
+
+## 自定义 Ledger
+
+只“实现了接口”还不等于拥有相同保证。
+
+至少必须正确实现：
+
+- revision CAS；
+- atomic claim + lease；
+- monotonic fencing；
+- heartbeat 与 semantic history 分离；
+- pagination/cursor；
+- state revision CAS；
+- ref existence；
+- truthful capability declaration。
+
+使用 [`@ordarium/testing`](09-testing.md) conformance suite 验证行为。
+
+## 部署边界
+
+SQLite 是 local embedded reference store。
+
+把 SQLite 文件放到 network filesystem **不会自动获得分布式多主机 authority / consensus**。

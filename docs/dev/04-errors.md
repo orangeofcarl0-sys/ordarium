@@ -1,80 +1,114 @@
-# 04 · 错误码表（案头参考）
+# 04 · Errors
 
-所有错误都是 `OrdariumError` 的子类，带稳定 `code` 字段（以及多数情况下的 `operationId`）。**按 `code` 决定动作，不要解析 message。**
+稳定 Runtime / Ledger 错误继承 `OrdariumError`，并带有字符串 `code`。
 
-## 身份与授权
+调用者应该按 `code` 或 error class 分类，**不要解析 message 文本**。
 
-| code | 含义 | 调用者动作 |
+| Code | 含义 | 调用者动作 |
 |---|---|---|
-| `IDENTITY_REQUIRED` | managed 副作用缺宿主提供的稳定身份 | 由 Host Adapter 补齐；不得用随机 id 绕过 |
-| `AUTHORIZATION_REQUIRED` | managed Action 没有授权决策 | 经宿主取得真实授权后以同一身份再进入 |
-| `ACTION_DENIED` | 此 operation 已持久 deny | 不自动重试；新意图需新调用/新业务修订 |
-| `AUTHORIZATION_CONFLICT` | 同一 operation 收到矛盾的授权证据 | 宿主集成错误；首个持久决定不可覆盖 |
-| `PRINCIPAL_CONFLICT` | 恢复凭据解析到另一个 Provider 主体 | 不得换账号继续原 operation |
-| `OPERATOR_AUTHORIZATION_REQUIRED` | 运维面调用缺有效 `OperatorAuthorization` | 由受信宿主命令注入；工具输入无法自授予 |
+| `AUTHORIZATION_REQUIRED` | Managed Action 没有 authorization decision | 提供 host/policy/human evidence |
+| `AUTHORIZATION_CONFLICT` | 同一 Operation 出现矛盾 durable authorization | 按 conflict 处理，检查 identity 是否被误复用 |
+| `PRINCIPAL_CONFLICT` | 恢复时解析到了不同 Provider principal | 恢复原 principal/account，禁止继续 |
+| `OPERATOR_AUTHORIZATION_REQUIRED` | Operations API 缺少可信 operator authorization | 从可信运维路径注入 |
+| `CONTRACT_DRIFT` | 同 name/version 下 Action contract 漂移 | 升级 Action version 或恢复兼容合同 |
+| `IDENTITY_REQUIRED` | Managed direct invocation 没有稳定 identity | 提供 source/scope/callId |
+| `LEDGER_CAPABILITY_REQUIRED` | Ledger 无法支撑请求的 capability | 使用 SQLite 或 conformant capable ledger |
+| `RUNTIME_QUIESCING` | Runtime 已停止接收新工作 | 把新工作路由到 live runtime |
+| `RUNTIME_CLOSED` | Runtime 已关闭 | 创建/使用 live runtime |
+| `IDEMPOTENCY_EXPIRED` | Finite idempotency window 已过期 | 禁止 redispatch；reconcile 或升级人工处理 |
+| `ACTION_DENIED` | Authorization 拒绝 Action | 对当前 Operation 视为 durable denial |
+| `OPERATION_CONFLICT` | Operation identity 与新材料冲突 | 检查 key/input/version/identity |
+| `OPERATION_BUSY` | 另一 live worker 持有 Operation | 退避后重试 |
+| `OPERATION_FAILED` | Operation 已 durable failed 或无法继续 | 检查 safe error/history |
+| `OPERATION_CANCELLED` | Operation 已 durable cancelled | 当前 Operation 终态 |
+| `OPERATION_UNCERTAIN` | 外部结果无法证明 | reconcile/升级处理；禁止 blind retry |
+| `PERSISTED_VALUE_TOO_LARGE` | result/receipt/state 超过持久化限制 | 缩小/脱敏数据，或显式调整 limit |
+| `INPUT_TOO_LARGE` | Action input 超过限制 | 减小输入，改传 reference |
+| `LEDGER_OPEN_FAILED` | Durable ledger 无法打开 | 按基础设施故障处理 |
+| `LEDGER_NEWER_SCHEMA` | 数据库 schema 新于当前 binary | 升级 binary，禁止旧版回写 |
+| `LEDGER_MIGRATION_FAILED` | 前向 migration 失败 | 保留旧库并调查 |
+| `LEDGER_BUSY` | SQLite/open coordination busy | 有界退避 |
+| `LEDGER_CORRUPT` | Ledger/record invariant 失败 | 停止写入，恢复/修复 |
+| `LEDGER_CLOSED` | Ledger handle 已关闭 | 使用 live ledger/runtime |
+| `LEDGER_FULL` | 持久存储无法继续写入 | 扩容/释放空间 |
+| `STATE_REVISION_CONFLICT` | State CAS 基准 revision 已过期 | reload 后重新决策 |
+| `STATE_REF_NOT_FOUND` | State write 引用了不存在的 target | 先修复/创建引用目标 |
+| `INVALID_CURSOR` | Change cursor 畸形或超过 high-water | 按显式 replay/reset policy 处理 |
+| `HOST_CONTRACT_MISMATCH` | Host contract 版本不一致 | 对齐 @ordarium/* 版本并重跑 conformance |
 
-## 冲突与并发
+## 可稍后重试
 
-| code | 含义 | 调用者动作 |
-|---|---|---|
-| `OPERATION_CONFLICT` | 同一身份被不同输入复用 | 修复 identity/key；绝不自动换随机身份 |
-| `OPERATION_BUSY` | 另一 owner 持有 claim | 稍后**以同一身份**重试；不得另起 operation |
-| `CONTRACT_DRIFT` | 同名同版本的 Action 合同元数据漂移 | 诊断性失败——作者应 bump version |
+典型 coordination / transient：
 
-## 执行与恢复
+```text
+OPERATION_BUSY
+LEDGER_BUSY
+```
 
-| code | 含义 | 调用者动作 |
-|---|---|---|
-| `OPERATION_UNCERTAIN` | 外部结果未知，拒绝盲重试 | inspect / reconcile-only / 人工外部核查 |
-| `OPERATION_FAILED` | 已有可证明失败终态 | 返回业务失败；不再执行 |
-| `OPERATION_CANCELLED` | dispatch 前取消（或只读取消） | 新的显式意图才可再调用 |
-| `IDEMPOTENCY_EXPIRED` | finite 幂等 deadline 已过，禁止执行 | 只能查询或保持 uncertain；不得续期 |
+重试时继续使用同一逻辑 identity，不要为了“绕开 busy”生成新 callId。
 
-## 资源限制
+## 需要修正请求/配置
 
-| code | 含义 | 调用者动作 |
-|---|---|---|
-| `INPUT_TOO_LARGE` | 输入超过 1 MiB canonical JSON 上限 | 缩小输入；发生在任何持久化之前 |
-| `PERSISTED_VALUE_TOO_LARGE` | output/receipt 超过持久化上限 | dispatch 前可修正；dispatch 后按 uncertain 处理 |
+```text
+IDENTITY_REQUIRED
+AUTHORIZATION_REQUIRED
+LEDGER_CAPABILITY_REQUIRED
+INPUT_TOO_LARGE
+PERSISTED_VALUE_TOO_LARGE
+HOST_CONTRACT_MISMATCH
+STATE_REVISION_CONFLICT
+STATE_REF_NOT_FOUND
+INVALID_CURSOR
+```
 
-变更订阅的显式页大小域为 `1..RESOURCE_LIMITS.maxStateChangePageItems`（默认 100；`limit=0` 会确定性活锁，超上限超出资源包络）；违反以 `TypeError` 在读取前拒绝。
+这些错误用完全相同输入 blind retry 通常没有意义。
 
-## 管理型 state
+## Durable conflict
 
-| code | 含义 | 调用者动作 |
-|---|---|---|
-| `STATE_REVISION_CONFLICT` | state 修订在写入前被其他写者移动（含 0=创建时已存在） | 重读当前修订，合并意图后以新 `expectedRevision` 重试；不得盲目覆盖 |
-| `STATE_REF_NOT_FOUND` | refs 指向不存在的 operation / state 修订 | 先落被引对象，或移除悬空引用后重写 |
-| `INVALID_CURSOR` | 变更订阅（`StateChangeFeed.changes`）的 cursor 不是合法持久位置：非法编码/形状/数值，**或**语法合法但位置超出本账本全局 high-water（未来位置 / 库还原或替换后的失效位置，ORD-BOOT-0.1） | 用上一次成功读取返回的 cursor；**绝不**当作"从零开始"或"无新内容"——fail closed |
+```text
+AUTHORIZATION_CONFLICT
+PRINCIPAL_CONFLICT
+CONTRACT_DRIFT
+OPERATION_CONFLICT
+```
 
-## 生命周期
+Conflict 表示：已经存在的 durable Operation 与新请求对同一身份给出了不兼容含义。
 
-| code | 含义 | 调用者动作 |
-|---|---|---|
-| `RUNTIME_QUIESCING` | Runtime 已停止接收新调用 | 新意图交给替换实例 |
-| `RUNTIME_CLOSED` | Runtime 与 ledger 已关闭 | 不再使用该实例 |
+应保留原记录并调查 identity / version / key / principal，而不是换个 callId 强行继续。
 
-## 基础设施（ledger）
+## Outcome ambiguity
 
-| code | 含义 | 调用者动作 |
-|---|---|---|
-| `LEDGER_CAPABILITY_REQUIRED` | ledger 能力不覆盖该 profile/拓扑 | 配置合格的 durable ledger 或显式降级 profile；**不会静默 fallback 到内存** |
-| `LEDGER_OPEN_FAILED` | 打不开数据库/属于别的应用 | 检查路径与占用；fail closed |
-| `LEDGER_NEWER_SCHEMA` | 数据库版本高于本运行时 | 升级 Ordarium；不自动降级 |
-| `LEDGER_MIGRATION_FAILED` | 迁移失败（已回滚；v1→v4 重建 / v2→v4 纯增表 / v3→v4 增表 + 定序回填） | 数据库保持完整旧版本；排查后重试打开 |
-| `LEDGER_BUSY` | 数据库被其他写入者锁定 | 稍后重试；保持同一身份 |
-| `LEDGER_CORRUPT` | 记录/内容损坏 | fail closed；从一致性备份恢复 |
-| `LEDGER_CLOSED` | 已关闭后使用 | 编程错误 |
-| `LEDGER_FULL` | 存储耗尽 | dispatch 前会停止；dispatch 后保留未知并要求维护 |
+```text
+OPERATION_UNCERTAIN
+IDEMPOTENCY_EXPIRED
+```
 
-## 宿主合同版本
+含义不是“失败了”，而是当前证据不足以安全决定下一次副作用动作。
 
-| code | 含义 | 调用者动作 |
-|---|---|---|
-| `HOST_CONTRACT_MISMATCH` | 宿主适配声明的合同版本与内核 `HOST_CONTRACT_VERSION` 不一致（`assertHostContract`，exact-match） | 按 docs/18 核对单升级 `@ordarium/*` pins 至对齐版本并重跑 conformance；不得绕过断言 |
+优先 reconcile；没有查询原语时升级 operator/human 处理。
 
-## 测试专用
+## Provider failure
 
-`SIMULATED_PROCESS_CRASH`——仅测试夹具使用，模拟进程崩溃。
+Action 只应该产生可安全持久化的 error/receipt。
 
-> 另有一个**持久化**的安全错误码 `ACTION_EXECUTION_FAILED`（写在 record 里的 `error.code`，不是抛出的异常类型）。
+不要把：
+
+```text
+raw provider exception
+stack
+credential
+token
+完整未脱敏 response
+```
+
+作为 durable error 保存。
+
+Dispatch 之后出现异常时，根据 effect profile 与已有证据，结果可能是 `uncertain`，而不是普通 `failed`。
+
+## Testing error
+
+`SIMULATED_PROCESS_CRASH` 用于 deterministic fault injection，不是生产 Provider error。
+
+## 持久化安全错误码
+
+`ACTION_EXECUTION_FAILED` 是**写在 record 里的** `error.code`（SafeError），不是抛出的异常类型——它随 Operation 持久化，供 `inspect`/`history` 与恢复路径读取。不要把它当作可 `catch` 的错误类处理。

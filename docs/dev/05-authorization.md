@@ -1,52 +1,132 @@
-# 05 · 授权
+# 05 · Authorization
 
-Ordarium 不实现审批策略——它**消费、分类、持久化**宿主的授权证据，并检测矛盾。
+Ordarium 明确区分：
 
-## 三类证据（kind）
-
-| kind | 含义 | 不能宣称 |
-|---|---|---|
-| `host-admission` | 原生工具管道已准许进入工具体 | 人工点击或特定 policy 已通过 |
-| `policy-decision` | 宿主明确命名的 guard/policy 给出决定 | 人工确认 |
-| `human-approval` | 宿主审批系统给出可审计的人类决定 | Provider 已执行或结果已成功 |
-
-managed profile（`guarded`/`idempotent`/`reconcilable`）在 dispatch 前必须有 `allow`；`read-only` 隐式允许（归类 `host-admission`，source 为 `implicit:<kind>`）。
-
-## 宿主侧的默认与定制
-
-**默认（宿主准入）**：调用在你的宿主里穿过准入管道后，适配器记录 `{ decision: "allow", kind: "host-admission", source: "<host>:tool-body-admitted" }`——**这不是人工批准**，只是"宿主放行到工具体"这一事实。
-
-更强的证据由宿主的 `authorize` 钩子映射（`HostInvocationPort` 的 `invocation.authorization`，或适配叶包的 `authorize` 选项）：
-
-```ts
-// 任意宿主：在构造 invocation 时注入分类证据
-const result = await runtime.invoke(action, input, {
-  identity: { source: "myhost", scope: sessionId, callId },
-  authorization: {
-    decision: "allow",
-    kind: "policy-decision",
-    source: "myhost:policy:payments",   // 宿主里真实存在的命名 policy
-  },
-});
+```text
+Action authorization
+!=
+Operator authorization
 ```
 
-> **legacy**：DSH 适配的等价写法是 `asDshTool(action, { runtime, authorize })`（`@ordarium/dsh/advanced`），已冻结，仅为既有集成保留。
+它们回答的是两个不同问题，不能互相替代。
 
-## 不可覆盖与矛盾
+## Action authorization
 
-同一 operation 的**首个持久授权决定不可变**——授权不是撤销通道。后续矛盾证据（先 allow 后 deny，或反之）得到 `AUTHORIZATION_CONFLICT`，持久决定原样保持。已 dispatch 的 allow 只能通过取消与 Provider reconciliation 处理。
-
-## OperatorAuthorization（另一条边界）
-
-运维面（[07](07-operations.md)）使用**独立**的 `OperatorAuthorization`，不复用 Action 授权：
+Managed write 需要：
 
 ```ts
-const authorization = {
-  operator: "op-1",
-  source: "dsh:operator-command",      // 受信宿主命令注入
-  grantedAt: new Date().toISOString(),
-  scope: "operations:reconcile",       // 读操作默认 "operations"
+type AuthorizationDecision = {
+  decision: "allow" | "deny";
+
+  kind:
+    | "host-admission"
+    | "policy-decision"
+    | "human-approval";
+
+  source: string;
+  reason?: string;
 };
 ```
 
-模型/普通工具输入**无法**自授予——伪造的 scope 在构造期就会被 `OPERATOR_AUTHORIZATION_REQUIRED` 拒绝。
+分类本身就是合同的一部分。
+
+“宿主收到了一次 tool call”可以证明 `host-admission`，但**不自动等于** `human-approval`。
+
+Authorization 可以：
+
+- 在每次 invocation 中传入；
+- 或由 runtime-level `authorizer` 产生。
+
+`read-only` / `unmanaged` 不要求 managed Action authorization。
+
+## Authorization 是 durable evidence
+
+Operation 一旦保存 authorization decision，后续 replay 不能改写这段 authority history。
+
+矛盾 decision：
+
+```text
+AUTHORIZATION_CONFLICT
+```
+
+这防止相同 Operation 在不同 replay 中被悄悄换成另一套授权语义。
+
+## 宿主负责什么
+
+宿主决定 authorization 的来源：
+
+- admission pipeline；
+- policy engine；
+- 人工审批；
+- 组织权限系统。
+
+Ordarium 只接收**分类后的 decision**，不实现宿主的 Approval 产品。
+
+禁止把 model/tool input 中的：
+
+```text
+approved: true
+role: admin
+humanApproved: true
+```
+
+直接转成可信 authorization。
+
+## Provider principal continuity
+
+Recovery 有时要求“仍然是同一个 Provider account / installation / tenant”。
+
+宿主可以传：
+
+```ts
+providerPrincipalRef: {
+  namespace: "github",
+  subject: "installation:1234",
+}
+```
+
+Ordarium 只持久化 digest。
+
+同一 Operation 后续恢复到不同 principal：
+
+```text
+PRINCIPAL_CONFLICT
+```
+
+这是 continuity evidence，不是 credential storage。
+
+## Operator authorization
+
+Operations API 使用另一类可信对象：
+
+```ts
+interface OperatorAuthorization {
+  operator: string;
+  source: string;
+  grantedAt: string;
+
+  scope?:
+    | "operations"
+    | "operations:reconcile";
+}
+```
+
+规则：
+
+- 它不是 Action authorization；
+- model/tool input 不能 self-grant；
+- `inspect/list/history` 需要 `operations`；
+- `reconcileOnly` 需要 `operations:reconcile`。
+
+见 [07 · Operations](07-operations.md)。
+
+## Checklist
+
+发布 managed Action 前确认：
+
+1. replay 时 identity 稳定；
+2. authorization kind 分类正确；
+3. 只有可信宿主路径能构造授权证据；
+4. denial 对该 Operation 是 durable 的；
+5. operator authorization 走独立可信通道；
+6. recovery 依赖 Provider account 时显式建模 principal continuity。

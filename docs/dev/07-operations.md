@@ -1,56 +1,163 @@
-# 07 · 运维面（Operations）
+# 07 · Operations & observability
 
-`uncertain` 必须可见、可安全处置——这就是运维面。它**默认不存在**，宿主必须显式注册并提供授权。
+`createOperations(...)` 提供 operator-facing 的 durable Operation 观察/恢复面。
 
-## 接入方式：host-neutral 优先
+它故意很小：
 
-运维面本身是 **core 的 `OrdariumOperations`**（inspect / list / history / reconcile-only），宿主负责把它注册成自己的工具并注入 `OperatorAuthorization`。`@ordarium/host-mcp` 叶包演示了这条路径（`operations: { authorization }` 选项）。
+```text
+inspect
+list
+history
+reconcileOnly
+```
 
-> **legacy**：DSH 适配曾提供 `createOrdariumPlugin`（`@ordarium/dsh/advanced`）作为进程级实例所有者与运维面注入点；该包已冻结，下面的片段仅对既有集成有效。
+没有：
+
+```text
+force execute
+force retry
+raw SQL mutation
+```
+
+## 创建
+
+只读观察可以仅给 ledger：
 
 ```ts
-import { createOrdariumPlugin } from "@ordarium/dsh/advanced";
+import { createOperations } from "@ordarium/core";
 
-const plugin = createOrdariumPlugin({
-  // databasePath / runtime / authorize / scopeId / recoveryMaterial 同前
-  operations: {
-    authorization: {               // 宿主命令构造后注入；伪造在构造期被拒
-      operator: "op-1",
-      source: "dsh:operator-command",
-      grantedAt: new Date().toISOString(),
-    },
+const operations = createOperations({ ledger });
+```
+
+`reconcileOnly` 需要 runtime：
+
+```ts
+const operations = createOperations({ runtime });
+```
+
+## OperatorAuthorization
+
+所有 Operations API 都需要可信 operator authorization：
+
+```ts
+const auth = {
+  operator: "oncall@example.com",
+  source: "admin-console",
+  grantedAt: new Date().toISOString(),
+  scope: "operations",
+} as const;
+```
+
+`reconcileOnly` 需要：
+
+```text
+operations:reconcile
+```
+
+这份授权必须来自可信运维路径，不能由 model/tool input 自己构造。
+
+## Inspect
+
+```ts
+const view = await operations.inspect(
+  operationId,
+  auth,
+);
+```
+
+Operator view 包含：
+
+- Action name/version；
+- effect kind；
+- state；
+- attempts；
+- semantic revision；
+- fencing token；
+- invocation identity；
+- authorization；
+- safe error/uncertainty；
+- receipt；
+- result digest reference。
+
+不暴露 arbitrary raw Provider data。
+
+## List
+
+```ts
+const page = await operations.list(
+  {
+    actionName: "ticket.create",
+    state: "uncertain",
+    scope: "session-42",
+    limit: 100,
   },
-});
-
-plugin.register(ctx, [myAction]);  // action 正常注册
-// 可选的四个运维工具同时注册：
-//   ordarium_inspect / ordarium_list / ordarium_history / ordarium_reconcile
-await plugin.dispose();            // quiesce → unregister → drain → close
+  cursor,
+  auth,
+);
 ```
 
-不提供 `operations` 时：四个工具不注册，`plugin.ops` 为 `undefined`——模型看不到任何运维面。
+`nextCursor` 是 opaque contract，不要解析内部格式。
 
-## 进程内 API（operator 审计视图）
-
-`plugin.ops`（或 core 的 `createOperations({ runtime })`）给宿主命令用，返回**完整**审计视图（含 identity/lineage/授权证据/错误/uncertainty 原因）：
+## History
 
 ```ts
-const view = await plugin.ops!.inspect(operationId, /* authz 已在构造期绑定 */);
-const page = await plugin.ops!.list({ state: "uncertain" });
+const history = await operations.history(
+  operationId,
+  cursor,
+  100,
+  auth,
+);
 ```
 
-**模型看到的工具**则只有脱敏八字段视图（operationId、action/version、effectKind、state、attempts、updatedAt、安全 reasonCode）——没有 reason 原文、actor、lineage、结果全文。
+这里是 **semantic revision history**。
 
-## reconcile-only：唯一的安全处置
+Lease heartbeat 不属于业务历史。
 
-`ordarium_reconcile` 工具（和 `ops.reconcileOnly`）只调用 Provider **查询**，永不执行——即使查询返回"确认不存在且可安全重发"也保持 `uncertain`（重发只属于正常运行时）。调用方需提交恢复材料：原 action 名 + 原输入 + 原身份；任何一项与持久摘要不匹配 → `OPERATION_CONFLICT`，Provider 零调用。
+## `reconcileOnly`
 
-会话找回（优先级更高）经 `recoveryMaterial` 绑定提供，但解析结果仍要过同一验证器。
+这是 query-only recovery。
 
-## 可见什么
+调用时必须重新提供能唯一复现 durable Operation 的材料：
 
-| 视图 | 字段 |
-|---|---|
-| 模型（工具输出） | 八字段脱敏白名单 |
-| operator（`ops.*`/审计） | 完整视图 + `resultRef.digest`（结果全文不出投影） |
-| ledger | 仅摘要与安全载荷（见 [02](02-core-concepts.md#secret-边界)） |
+- `operationId`；
+- Action；
+- input；
+- InvocationIdentity；
+- 可选 ProviderPrincipalRef。
+
+Ordarium 会重新计算 identity/digest。
+
+不一致：
+
+```text
+OPERATION_CONFLICT
+```
+
+关键保证：
+
+```text
+reconcileOnly 永远不调用 Action.execute()
+```
+
+即使 Provider 权威 query 返回 `absent + retrySafe`，operator query 本身也不会变成 redispatch。
+
+## Model view
+
+`projectModelView(record)` 比 operator view 更窄：
+
+- 不返回 raw result；
+- 不返回 receipt body；
+- 不返回完整 authorization / identity lineage；
+- uncertainty 只暴露有限 reasonCode。
+
+调用者只拿自己真正需要的投影。
+
+## Uncertain 的推荐运维流程
+
+1. inspect；
+2. 核对 Action/profile/Provider 能力；
+3. 支持 reconcile 时执行 `reconcileOnly`；
+4. 仍无法确定则升级 operator/human；
+5. 保留原 Operation 证据。
+
+不要通过生成新 callId 绕开 `uncertain`。

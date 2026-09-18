@@ -1,82 +1,156 @@
-# 09 · 测试你的 Action 与适配器
+# 09 · Testing
 
-`@ordarium/testing` 提供确定性夹具：无网络、无真实凭据、手动时钟。
+`@ordarium/testing` 用来验证那些 happy-path unit test 最容易漏掉的故障边界。
 
-## Ledger / state conformance（写自定义 ledger 时先跑这个）
-
-```ts
-import { runStateLedgerConformance } from "@ordarium/testing";
-
-await runStateLedgerConformance(myLedger);   // 违反即抛描述性 Error
-```
-
-框架无关（任何 test runner 都能驱动），覆盖：state 修订 CAS 链（创建/冲突/坐标不匹配）、append-only history 与 opaque cursor 分页、refs 反向索引、派生视图（`listStates` 的 namespace 过滤与分页），以及**声明 `stateChangeFeed: true` 时的变更订阅契约**——有序观测、页大小不变性、`limit` 域与 `limit=0` 拒绝、超出全局高水位的 cursor 拒绝。`MemoryLedger` 与 `SqliteLedger` 都跑同一套（`pnpm test:conformance`），你的自定义 ledger 也应当如此。
-
-## HostAdapterHarness：不写宿主就能测全合同
+## Fault injection
 
 ```ts
-import { HostAdapterHarness } from "@ordarium/testing";
+import { FaultInjector } from "@ordarium/testing";
 
-const harness = new HostAdapterHarness(runtime);   // 任意 OrdariumRuntime
+const faults = new FaultInjector()
+  .crashAt("after-dispatch");
 
-// 同 callId 重放 → 汇合为一个 operation、单次执行
-await harness.invoke(action, { sku: "a" }, { callId: "c1", authorization: allow });
-await harness.invoke(action, { sku: "a" }, { callId: "c1", authorization: allow });
-
-// 兄弟调用（同 rootCallId）→ 两个 operation
-await harness.invoke(action, { sku: "a" }, { callId: "A1", rootCallId: "R", authorization: allow });
-```
-
-选项：`callId`/`rootCallId`/`actor`/`lineage`/`authorization`/`providerPrincipalRef`/`signal`——正是宿主要注入的全部。
-
-## 崩溃注入与时钟
-
-```ts
-import { FaultInjector, ManualClock, fixedIdentity } from "@ordarium/testing";
-
-const clock = new ManualClock("2026-01-01T00:00:00.000Z");
 const runtime = new OrdariumRuntime({
-  clock: clock.now,
-  hooks: new FaultInjector().crashAt("after-dispatch"),  // 三个检查点之一
+  ledger,
+  hooks: faults,
 });
-// ...触发调用 → SimulatedProcessCrash；记录诚实停在 dispatched/uncertain
-clock.advance(60_000);  // 推进时间测租约到期/接管
 ```
 
-检查点：`after-claim`（dispatch 前）、`after-dispatch`（Provider 前）、`after-reconcile`（查询后）。
+Runtime checkpoints：
 
-测试托管行为时的两个实用项：`allowVolatileLedger: true`（MemoryLedger 上跑 managed 写）；`fixedIdentity()`（稳定身份）。
+```text
+after-claim
+after-dispatch
+after-reconcile
+```
 
-## Provider conformance
+它们适合验证：
 
-把你对 Provider 的**能力声明**变成可重复验证的证据：
+```text
+进程在某一步消失以后
+durable Operation 到底停在哪里
+下次恢复允许做什么
+```
+
+## ManualClock
 
 ```ts
-import {
-  ProviderFixture,
-  assertEffectSupportedByDeclaration,
-  providerBackedAction,
-  providerDeclarations,
-} from "@ordarium/testing";
+import { ManualClock } from "@ordarium/testing";
 
-const fixture = new ProviderFixture({ declaration: providerDeclarations.durableIdempotent() });
-assertEffectSupportedByDeclaration(effects.idempotent(), fixture.declaration); // 配对即拒
-
-const action = providerBackedAction(fixture, {
-  name: "conf.reserve",
-  effect: effects.idempotent(),
-  keyOf: (input) => `sku:${(input as { sku: string }).sku}`,
-});
-
-fixture.loseResponseOnce();      // 效果已提交但响应丢失 → 恢复后业务效果仍恰为 1
-await harness.invoke(action, { sku: "a" }, { callId: "c1", authorization: allow });
-// fixture.calls / fixture.effectCount() 是你的断言基础
+const clock = new ManualClock();
+clock.advance(30_000);
 ```
 
-七个声明预设覆盖 conformance 矩阵：`opaque` / `durableIdempotent` / `finiteIdempotent` / `reconcilable` / `falseAbsence`（最终一致假 absent）/ `cancellable` / `fenced`。可切换故障：`loseResponseOnce()`、`eventualAbsenceOnce()`、`pendingOnce()`。
+用于稳定测试：
 
-**断言业务效果计数而不是状态名**——`fixture.effectCount()` 才是"没有重复副作用"的直接证据。
+- lease expiry；
+- finite idempotency window；
+- recovery timing；
+- authorization/state timestamp。
 
-## 官方套件参考
+## Fixed identity
 
-`pnpm test:conformance` 运行的 A01–A12 矩阵（同 key 复用、键冲突、响应丢失恢复、finite 边界、pending 收敛、假 absent、权威 absent 双模式、取消后查询、stale fence、换 principal、非法配对、deadline 不续期）就是你的测试可以照抄的模式库。
+```ts
+import { fixedIdentity } from "@ordarium/testing";
+
+const identity = fixedIdentity({
+  scope: "case-42",
+  callId: "invoke-1",
+});
+```
+
+Replay test 只有在 identity 真正稳定时才有意义。
+
+## HostAdapterHarness
+
+`HostAdapterHarness` 是 `HostInvocationPort` 上的 deterministic host stand-in。
+
+可以传递：
+
+- identity；
+- authorization；
+- provider principal；
+- lineage；
+- AbortSignal。
+
+适合在不启动完整 LLM/宿主进程的情况下测试 adapter。
+
+## Conformance suites
+
+`@ordarium/testing` 提供：
+
+- Provider conformance；
+- Ledger / State conformance；
+- Host adapter conformance。
+
+`@ordarium/host-kit` 再导出正常的 host conformance 入口。
+
+**TypeScript interface 能编译 ≠ 行为具备同等 guarantee。**
+
+自定义 ledger/host/provider 必须用行为测试证明。
+
+## Managed Action 最小测试矩阵
+
+至少覆盖：
+
+1. happy path；
+2. 同 identity + 同 input replay；
+3. 同 identity + 不同 input conflict；
+4. authorization allow / deny / conflict；
+5. 多 worker 并发；
+6. crash after claim；
+7. crash after dispatch；
+8. cancellation；
+9. input/result/receipt size limit；
+10. Provider principal mismatch（适用时）；
+11. profile-specific recovery。
+
+### Guarded
+
+证明：
+
+```text
+dispatch 后不确定
+→ uncertain
+→ 不 blind retry
+```
+
+### Idempotent
+
+证明：
+
+- 重做时仍使用同一个 Provider key；
+- finite window 过期后不 redispatch。
+
+### Reconcilable
+
+覆盖：
+
+```text
+succeeded
+failed
+absent retrySafe=true
+absent retrySafe=false
+pending
+unknown
+```
+
+并证明：
+
+```text
+reconcileOnly
+→ execute spy 始终为 0
+```
+
+## Repository gates
+
+```text
+pnpm check
+pnpm test:integration
+pnpm test:conformance
+pnpm test:package
+pnpm verify:architecture
+pnpm verify:docs
+pnpm verify:release
+pnpm verify:matrix
+```
