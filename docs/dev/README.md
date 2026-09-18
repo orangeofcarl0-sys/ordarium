@@ -13,7 +13,7 @@
 | 05 | [Authorization](05-authorization.md) | Action authorization 与 operator authorization |
 | 06 | [Ledgers](06-ledgers.md) | SQLite、MemoryLedger、capability、自定义 ledger |
 | 07 | [Operations](07-operations.md) | inspect/list/history/reconcile-only |
-| 08 | [Hosts](08-hosts.md) | 自建宿主、host-kit、MCP、legacy DSH |
+| 08 | [Hosts](08-hosts.md) | 自建宿主、host-kit、MCP |
 | 09 | [Testing](09-testing.md) | fault injection 与 conformance |
 | 10 | [Lifecycle & recovery](10-lifecycle-and-recovery.md) | quiesce/drain/uncertain/reconcile |
 | 11 | [Management state](11-state.md) | revisioned state、refs、CAS、change feed |

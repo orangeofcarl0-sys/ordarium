@@ -3,7 +3,7 @@
 ## 前置条件
 
 - `@ordarium/core` / `@ordarium/testing` / `@ordarium/host-kit`：Node.js `>=24.0.0`；
-- `@ordarium/ledger-sqlite` / `@ordarium/host-mcp` / legacy `@ordarium/dsh`：Node.js `>=24.15.0`；
+- `@ordarium/ledger-sqlite` / `@ordarium/host-mcp`：Node.js `>=24.15.0`；
 - 一个能提供稳定 invocation identity 的宿主或 Node 进程；
 - 仓库开发使用 pnpm。
 

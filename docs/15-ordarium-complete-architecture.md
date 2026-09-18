@@ -47,8 +47,6 @@ Provider
       ledger-sqlite     testing    host leaves
              |             |        /      \
              |             +---- host-kit  host-mcp
-             |
-             +---------------- legacy dsh
 ```
 
 依赖方向：
@@ -57,8 +55,6 @@ Provider
 host leaves → kernel
 kernel -/→ host leaves
 ```
-
-`@ordarium/dsh` 是 legacy leaf，不属于 kernel。
 
 ## 3. Normal execution path
 

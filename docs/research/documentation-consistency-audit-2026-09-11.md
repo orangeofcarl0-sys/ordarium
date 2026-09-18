@@ -104,6 +104,8 @@ pnpm verify:release       passed（check / architecture / integration / conforma
 
 **后续一轮（同日，delta-ARCH-003）**：把 legacy 落到**类型面**——`@ordarium/dsh` 与 `/advanced` 的 32 处公开声明与再导出新增 `@deprecated`（TS 会把该标记透传到 `.d.ts`，消费者的编辑器直接可见迁移方向），六包 bump 到 **1.3.2**，快照漂移仅限这四处 dsh 声明注释 + `contracts.json` 版本。运行时导出集合、类型形状、签名、依赖图保持零变化，既有测试全绿。
 
+**再一轮（2026-09-18，重写应用后的严格化）**：所有者判定"重写后的产品文档仍未正确去 DSH 叙事"——残留不在句子而在**清单结构**：DSH 仍与五个现役包并列出现在 README 的包表与宿主表、`docs/19` 当前发布行的 `Packages`/`Node`、`docs/dev/01` 前置条件，读起来像现役成员。按所有者选定的口径（产品文档只留一处迁移说明）处理：从上述所有现役清单移除 DSH，删除 `docs/12`/`docs/14`/`docs/15`/`docs/16`/`docs/dev/08` 中的 DSH 拓扑分支、状态小节与图节点，`docs/17` 的 non-goal 改为通用表述；产品文档只保留 README 的一处 legacy+迁移说明。弃用事实仍由 release 层（`docs/19` 的 1.3.2 五类表）、兼容政策层（`docs/18` §7）、`COMPAT-DSH-002`、`packages/dsh/README.md` 与 `evidence/` 承载；`docs/research/` 与 `evidence/` 的历史档案一字未改。
+
 ## 8. 后续维护约定
 
 1. **新增"当前态"陈述时，必须写清它属于哪个版本**；历史口径一律加日期化注记而非就地改写；

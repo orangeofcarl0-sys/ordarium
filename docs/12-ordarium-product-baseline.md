@@ -92,8 +92,6 @@ stay uncertain
       ledger-sqlite     testing    host leaves
              |             |        /      \
              |             +---- host-kit  host-mcp
-             |
-             +---------------- legacy dsh
 ```
 
 依赖原则：
@@ -103,8 +101,6 @@ host leaves → kernel
 
 kernel -/→ host leaves
 ```
-
-`@ordarium/dsh` 是 legacy leaf，不是 kernel package。
 
 ## 当前公开事实
 
@@ -169,27 +165,3 @@ Ordarium 不是：
 
 高层系统可以在 Ordarium 的 effect/state primitive 上构建这些语义。
 
-## Legacy DSH
-
-`@ordarium/dsh` 当前状态：
-
-```text
-legacy
-frozen
-existing consumers supported
-no new capability target
-```
-
-新接入优先：
-
-```text
-@ordarium/core + @ordarium/host-kit
-```
-
-或：
-
-```text
-@ordarium/host-mcp
-```
-
-当前没有任何物理移除 DSH 的承诺，也未随任何版本发布移除；1.3.2 起该包公开声明携带 `@deprecated` 标记（类型面提示，非 breaking）。后续 release disclosure 见 [18](18-release-compat-policy.md) 与 [19](19-release-history.md)。

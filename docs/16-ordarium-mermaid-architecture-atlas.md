@@ -26,7 +26,6 @@ flowchart TD
   TEST["@ordarium/testing"]
   KIT["@ordarium/host-kit"]
   MCP["@ordarium/host-mcp"]
-  DSH["@ordarium/dsh (legacy)"]
 
   SQL --> CORE
   TEST --> CORE
@@ -34,8 +33,6 @@ flowchart TD
   KIT --> TEST
   MCP --> CORE
   MCP --> SQL
-  DSH --> CORE
-  DSH --> SQL
 ```
 
 ## 3. Operation lifecycle

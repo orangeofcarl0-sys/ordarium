@@ -97,7 +97,7 @@ runHostAdapterConformance
 
 Host package 在宣称 compatible 前应通过 portable conformance。
 
-Host-kit 不包含 Palimpsest-shaped 或 DSH-shaped 字段。
+Host-kit 不包含任何宿主特有字段。
 
 ## MCP
 
@@ -121,35 +121,11 @@ Ordarium Actions
 - managed Action 默认只记录 `host-admission`，除非配置自定义 authorizer；
 - `ordarium_inspect` 只有显式提供可信 operator authorization 时才注册。
 
-## Legacy DSH
-
-`@ordarium/dsh` 保留给既有消费者，但已经：
-
-```text
-legacy
-frozen
-no new capability target
-```
-
-新宿主不要以它作为架构模板。
-
-迁移方向：
-
-```text
-@ordarium/dsh
-→ @ordarium/core + HostInvocationPort
-→ @ordarium/host-kit
-```
-
-若需要 MCP，则直接使用 `@ordarium/host-mcp`。
-
 ## Primitive input schema
 
 Core 允许 primitive Action input。
 
-Legacy DSH 因宿主 tool schema 约束要求 object-shaped arguments。
-
-这是 DSH adapter 限制，不是 Ordarium kernel 限制。
+具体宿主适配器可能因宿主自身的 tool schema 约束要求 object-shaped arguments——那是该适配器的限制，不是 Ordarium kernel 的限制。
 
 ## Host checklist
 

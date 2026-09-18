@@ -12,12 +12,12 @@
 | Workspace package line | **1.3.2**（已 bump，待发布） |
 | Tag / Release | `ordarium-v1.3.1` |
 | Distribution | GitHub tags / Releases |
-| Packages | core / ledger-sqlite / testing / host-kit / host-mcp / dsh |
+| Packages | 现役五个：core / ledger-sqlite / testing / host-kit / host-mcp；另有 legacy 叶包 dsh（frozen，见「下一版本」） |
 | SQLite schema | **v4** |
 | `HOST_CONTRACT_VERSION` | **1** |
 | OperationRecord schema | **2** |
 | StateRecord schema | **1** |
-| Node | core/testing/host-kit `>=24.0.0`; sqlite/host-mcp/dsh `>=24.15.0` |
+| Node | core/testing/host-kit `>=24.0.0`; sqlite/host-mcp `>=24.15.0`（legacy dsh 同为 `>=24.15.0`） |
 
 公共 npm 发布目前没有完成；GitHub 仍是正式 release channel。
 

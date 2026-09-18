@@ -11,7 +11,6 @@
 | `@ordarium/testing` | fault / conformance toolkit | provider / ledger / host fixtures |
 | `@ordarium/host-kit` | third-party host adapter kit | 自建 host package |
 | `@ordarium/host-mcp` | concrete MCP adapter | 自定义 authorization / principal mapping |
-| `@ordarium/dsh` | legacy frozen adapter | 仅维护/迁移 |
 
 ## Core module map
 
@@ -162,16 +161,6 @@ StateChangeFeed
 
 处理流程见 [18](18-release-compat-policy.md)。
 
-## DSH legacy status
-
-```text
-frozen
-no new capability target
-not the architecture template
-no current removal
-```
-
-新宿主开发走 `host-kit` / core。
 
 ## 当前维护姿态
 

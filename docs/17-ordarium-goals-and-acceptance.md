@@ -153,7 +153,7 @@ Acceptance 不要求：
 - workflow semantics；
 - secret management；
 - standalone daemon；
-- 移除 legacy DSH package。
+- 移除既有 legacy 叶包（其弃用状态与迁移路径由 release notes 与兼容政策承载）。
 
 ## 变更等级（原 §7.2，现行有效）
 

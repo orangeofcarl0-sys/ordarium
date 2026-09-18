@@ -191,7 +191,6 @@ interface HostInvocationPort {
 |---|---|
 | `@ordarium/host-kit` | host contract 握手 + curated types + portable conformance runner |
 | `@ordarium/host-mcp` | MCP stdio 宿主适配 |
-| `@ordarium/dsh` | **legacy / frozen** DSH 适配 |
 
 当前：
 
@@ -210,7 +209,6 @@ HOST_CONTRACT_VERSION = 1
 | `@ordarium/host-kit` | 自建宿主适配合同与 conformance | `>=24.0.0` |
 | `@ordarium/host-mcp` | MCP 叶适配器 | `>=24.15.0` |
 | `@ordarium/testing` | fault injection 与 conformance helpers | `>=24.0.0` |
-| `@ordarium/dsh` | legacy DSH 适配器 | `>=24.15.0` |
 
 每个包都有就地 README，位于 [`packages/`](packages/)。
 
