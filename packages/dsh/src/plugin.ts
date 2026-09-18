@@ -28,6 +28,11 @@ import {
  * ships as plugin functionality of its own - the operations plane. Action
  * authorship stays with business plugins; the shell never becomes a tool
  * registration framework.
+ *
+ * @deprecated Legacy DSH adapter leaf (frozen 2026-09-11, see COMPAT-DSH-002 in
+ * evidence/compatibility-register.md). It receives no new capability and is not the
+ * recommended integration path: use `@ordarium/core` with `@ordarium/host-kit`
+ * (custom host) or `@ordarium/host-mcp` (MCP) instead.
  */
 
 export interface OrdariumPluginOptions extends CreateDshOrdariumOptions {
@@ -40,6 +45,12 @@ export interface OrdariumPluginOptions extends CreateDshOrdariumOptions {
   readonly operations?: { readonly authorization: OperatorAuthorization } | undefined;
 }
 
+/**
+ * @deprecated Legacy DSH adapter leaf (frozen 2026-09-11, see COMPAT-DSH-002 in
+ * evidence/compatibility-register.md). It receives no new capability and is not the
+ * recommended integration path: use `@ordarium/core` with `@ordarium/host-kit`
+ * (custom host) or `@ordarium/host-mcp` (MCP) instead.
+ */
 export interface OrdariumPluginOps {
   inspect(operationId: string): Promise<OperationView | undefined>;
   list(
@@ -67,6 +78,12 @@ export interface OrdariumPluginOps {
   }): Promise<O>;
 }
 
+/**
+ * @deprecated Legacy DSH adapter leaf (frozen 2026-09-11, see COMPAT-DSH-002 in
+ * evidence/compatibility-register.md). It receives no new capability and is not the
+ * recommended integration path: use `@ordarium/core` with `@ordarium/host-kit`
+ * (custom host) or `@ordarium/host-mcp` (MCP) instead.
+ */
 export interface OrdariumDshPlugin extends DshOrdarium {
   readonly ops?: OrdariumPluginOps | undefined;
   dispose(): Promise<void>;
@@ -99,6 +116,12 @@ function opsTool(
   };
 }
 
+/**
+ * @deprecated Legacy DSH adapter leaf (frozen 2026-09-11, see COMPAT-DSH-002 in
+ * evidence/compatibility-register.md). It receives no new capability and is not the
+ * recommended integration path: use `@ordarium/core` with `@ordarium/host-kit`
+ * (custom host) or `@ordarium/host-mcp` (MCP) instead.
+ */
 export function createOrdariumPlugin(options: OrdariumPluginOptions = {}): OrdariumDshPlugin {
   const base = createDshOrdarium({
     databasePath: options.databasePath,

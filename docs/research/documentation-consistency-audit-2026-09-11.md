@@ -100,7 +100,9 @@ pnpm verify:release       passed（check / architecture / integration / conforma
 
 **处置（治理面）**：新增兼容登记 `COMPAT-DSH-002`（边界 / 兼容来源 / canonical target = core + host-kit/host-mcp / owner / 移除条件 = 双条件 + major 线）；`docs/18` 修订行 RCP-5（下一次发布按 §1 ⑤ 披露弃用面）；`docs/19` 新增 §5"待披露项"；`docs/17` §16 第 6 项追加现行处置；`packages/dsh/package.json` 描述加 `[LEGACY]` 标记与迁移提示。
 
-**边界（明确不做）**：本次**不删除**该包、不改其 API/导出、不动快照、不 bump 版本、不 breaking——legacy 是治理状态而非移除；物理迁移仍受双条件约束并保持休眠。既有消费者零改动。
+**边界（明确不做）**：本次**不删除**该包、不改其 API/导出/运行时行为、不 breaking——legacy 是治理状态而非移除；物理迁移仍受双条件约束并保持休眠。既有消费者零改动。
+
+**后续一轮（同日，delta-ARCH-003）**：把 legacy 落到**类型面**——`@ordarium/dsh` 与 `/advanced` 的 32 处公开声明与再导出新增 `@deprecated`（TS 会把该标记透传到 `.d.ts`，消费者的编辑器直接可见迁移方向），六包 bump 到 **1.3.2**，快照漂移仅限这四处 dsh 声明注释 + `contracts.json` 版本。运行时导出集合、类型形状、签名、依赖图保持零变化，既有测试全绿。
 
 ## 8. 后续维护约定
 

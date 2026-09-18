@@ -8,7 +8,8 @@
 
 | 项 | 值 |
 |---|---|
-| 工作区/包版本 | **1.3.1** |
+| 已发布版本 | **1.3.1**（tag `ordarium-v1.3.1`，见 §2） |
+| 工作区版本 | **1.3.2**（已 bump、尚未发布；内容见 §5） |
 | 版本锚 | git tag `ordarium-v1.3.1`（annotated）+ 同名 GitHub Release（六 tarball） |
 | 分发渠道 | GitHub（仓库即包源；公共 npm 发布未执行，见 §3 的 1.0.0 条目） |
 | 包集合 | 六包：`@ordarium/core`、`@ordarium/ledger-sqlite`、`@ordarium/dsh`、`@ordarium/testing`、`@ordarium/host-mcp`、`@ordarium/host-kit` |
@@ -72,13 +73,13 @@ record schemaVersion            →  OperationRecord v2 / StateRecord v1
 
 四者**互相独立**：包版本 bump 不自动 bump 宿主合同版本或库 schema；库 schema 迁移会按 docs/18 §1 ② 在 release notes 披露。
 
-## 5. 待披露项（已决定，尚未随版本发布）
+## 5. 待发布：1.3.2（工作区已 bump，未发布）
 
-| 决定日 | 事项 | 将影响 | 处置 |
+| 决定日 | 事项 | 影响面 | 处置 |
 |---|---|---|---|
-| 2026-09-11 | `@ordarium/dsh` 叶包**冻结为 legacy**（文档叙事去 DSH 中心化；自建宿主为一等路径） | 下一次发布的 release notes（docs/18 §1 ⑤ 弃用面） | 登记 `COMPAT-DSH-002`；**零 API/schema 变更、零 breaking**——包继续随线发布，既有消费者零改动；物理迁移仍受 docs/17 §16 第 6 项双条件约束并休眠 |
+| 2026-09-11 | `@ordarium/dsh` 叶包**冻结为 legacy**（文档叙事去 DSH 中心化；自建宿主为一等路径），并在**类型面**落地：32 处声明/再导出新增 `@deprecated` | release notes 的 docs/18 §1 **⑤ 弃用面**（首次披露）；`.d.ts` 注释；无运行时/形状/依赖变化 | 登记 `COMPAT-DSH-002`；Delta Sheet `evidence/delta-ARCH-003-dsh-legacy-freeze.md`；快照漂移仅 dsh 声明注释 + `contracts.json` 版本；**零 breaking**——包继续随线发布，既有消费者零改动；物理迁移仍受 docs/17 §16 第 6 项双条件约束并休眠 |
 
-> 说明：本文 §2 只记录**已发布**的版本；上表是已决定但尚未打包进任何版本的消费者可见变化，避免它在发布时被遗漏。
+> 说明：本文 §1/§2 的生命周期是"已发布事实"；本节记录**已 bump 但尚未打 tag** 的版本，避免消费者可见变化在发布时被遗漏。1.3.2 的 release notes 按 docs/18 §1 逐类披露：①默认值无 ②存储迁移无 ③错误分类无 ④新错误码无 ⑤**弃用面：`@ordarium/dsh` 及其 `/advanced` 子路径冻结为 legacy**。
 
 ## 6. 历史可重建性
 

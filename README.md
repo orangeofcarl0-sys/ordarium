@@ -6,7 +6,7 @@ Ordarium 是**多 agent harness 的公共基石**：一个轻量、可嵌入、h
 
 > 当前发布线为 **`1.3.1`**（正式线，MIT；六包）。**分发渠道为 GitHub**：本仓库即包源，以 git tag + 同名 Release 为版本锚（`ordarium-v1.0.0` → `ordarium-v1.3.1` 均已发布）；公共 npm 发布未执行（1.0.0 时的尝试被账号 2FA 拒绝，零发布）。每版的档位、头条交付与消费者可见变化见 [`docs/19-release-history.md`](docs/19-release-history.md)。
 >
-> **`@ordarium/dsh` 是 legacy 叶包**：它是最初的 DSH 宿主适配，现已冻结（只保留给既有消费者，不再新增能力，不再作为推荐路径）。新接入请走 host-neutral 路径：`@ordarium/core` + 自建宿主（`@ordarium/host-kit`）或 MCP（`@ordarium/host-mcp`）。
+> **`@ordarium/dsh` 是 legacy 叶包**：它是最初的 DSH 宿主适配，现已冻结（只保留给既有消费者，不再新增能力，不再作为推荐路径）。自 1.3.2 起其公开声明全部带 `@deprecated`，IDE/类型检查会直接提示迁移方向；运行时、导出与类型形状**零变化**——既有代码继续编译运行。新接入请走 host-neutral 路径：`@ordarium/core` + 自建宿主（`@ordarium/host-kit`）或 MCP（`@ordarium/host-mcp`）。
 
 ## 为什么安装
 

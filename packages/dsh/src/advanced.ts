@@ -14,6 +14,12 @@ import {
 } from "@ordarium/core";
 import { SqliteLedger } from "@ordarium/ledger-sqlite";
 
+/**
+ * @deprecated Legacy DSH adapter leaf (frozen 2026-09-11, see COMPAT-DSH-002 in
+ * evidence/compatibility-register.md). It receives no new capability and is not the
+ * recommended integration path: use `@ordarium/core` with `@ordarium/host-kit`
+ * (custom host) or `@ordarium/host-mcp` (MCP) instead.
+ */
 export interface DshTextContent {
   type: "text";
   text: string;
@@ -24,9 +30,20 @@ export interface DshTextContent {
  * text blocks, but custom renderers may return any host-native block shape
  * - the adapter no longer restricts them to a private text-only union
  * (COMPAT-DSH-001).
+ *
+ * @deprecated Legacy DSH adapter leaf (frozen 2026-09-11, see COMPAT-DSH-002 in
+ * evidence/compatibility-register.md). It receives no new capability and is not the
+ * recommended integration path: use `@ordarium/core` with `@ordarium/host-kit`
+ * (custom host) or `@ordarium/host-mcp` (MCP) instead.
  */
 export type DshContentBlock = { readonly type: string } & Record<string, unknown>;
 
+/**
+ * @deprecated Legacy DSH adapter leaf (frozen 2026-09-11, see COMPAT-DSH-002 in
+ * evidence/compatibility-register.md). It receives no new capability and is not the
+ * recommended integration path: use `@ordarium/core` with `@ordarium/host-kit`
+ * (custom host) or `@ordarium/host-mcp` (MCP) instead.
+ */
 export interface DshToolRunContext {
   readonly callId: string;
   readonly rootCallId: string;
@@ -39,6 +56,12 @@ export interface DshToolRunContext {
   concludeTurn?(): void;
 }
 
+/**
+ * @deprecated Legacy DSH adapter leaf (frozen 2026-09-11, see COMPAT-DSH-002 in
+ * evidence/compatibility-register.md). It receives no new capability and is not the
+ * recommended integration path: use `@ordarium/core` with `@ordarium/host-kit`
+ * (custom host) or `@ordarium/host-mcp` (MCP) instead.
+ */
 export interface DshToolDefinition<I extends JsonValue, O extends JsonValue> {
   readonly name: string;
   readonly description: string;
@@ -52,6 +75,12 @@ export interface DshToolDefinition<I extends JsonValue, O extends JsonValue> {
   execute(args: I, context: DshToolRunContext): Promise<O>;
 }
 
+/**
+ * @deprecated Legacy DSH adapter leaf (frozen 2026-09-11, see COMPAT-DSH-002 in
+ * evidence/compatibility-register.md). It receives no new capability and is not the
+ * recommended integration path: use `@ordarium/core` with `@ordarium/host-kit`
+ * (custom host) or `@ordarium/host-mcp` (MCP) instead.
+ */
 export interface DshToolRegistry {
   register(definition: DshToolDefinition<JsonValue, JsonValue>):
     | void
@@ -59,20 +88,44 @@ export interface DshToolRegistry {
     | { dispose(): void };
 }
 
+/**
+ * @deprecated Legacy DSH adapter leaf (frozen 2026-09-11, see COMPAT-DSH-002 in
+ * evidence/compatibility-register.md). It receives no new capability and is not the
+ * recommended integration path: use `@ordarium/core` with `@ordarium/host-kit`
+ * (custom host) or `@ordarium/host-mcp` (MCP) instead.
+ */
 export interface DshPluginContext {
   tools: DshToolRegistry;
 }
 
+/**
+ * @deprecated Legacy DSH adapter leaf (frozen 2026-09-11, see COMPAT-DSH-002 in
+ * evidence/compatibility-register.md). It receives no new capability and is not the
+ * recommended integration path: use `@ordarium/core` with `@ordarium/host-kit`
+ * (custom host) or `@ordarium/host-mcp` (MCP) instead.
+ */
 export interface DshAuthorizationRequest<I extends JsonValue, O extends JsonValue> {
   action: Action<I, O>;
   input: I;
   context: DshToolRunContext;
 }
 
+/**
+ * @deprecated Legacy DSH adapter leaf (frozen 2026-09-11, see COMPAT-DSH-002 in
+ * evidence/compatibility-register.md). It receives no new capability and is not the
+ * recommended integration path: use `@ordarium/core` with `@ordarium/host-kit`
+ * (custom host) or `@ordarium/host-mcp` (MCP) instead.
+ */
 export type DshAuthorizer = <I extends JsonValue, O extends JsonValue>(
   request: DshAuthorizationRequest<I, O>,
 ) => Promise<AuthorizationDecision> | AuthorizationDecision;
 
+/**
+ * @deprecated Legacy DSH adapter leaf (frozen 2026-09-11, see COMPAT-DSH-002 in
+ * evidence/compatibility-register.md). It receives no new capability and is not the
+ * recommended integration path: use `@ordarium/core` with `@ordarium/host-kit`
+ * (custom host) or `@ordarium/host-mcp` (MCP) instead.
+ */
 export interface DshActionOptions<I extends JsonValue, O extends JsonValue> {
   runtime: OrdariumRuntime;
   authorize?: DshAuthorizer | undefined;
@@ -90,6 +143,12 @@ export interface DshActionOptions<I extends JsonValue, O extends JsonValue> {
 
 type AnyAction = Action<any, any>;
 
+/**
+ * @deprecated Legacy DSH adapter leaf (frozen 2026-09-11, see COMPAT-DSH-002 in
+ * evidence/compatibility-register.md). It receives no new capability and is not the
+ * recommended integration path: use `@ordarium/core` with `@ordarium/host-kit`
+ * (custom host) or `@ordarium/host-mcp` (MCP) instead.
+ */
 export function asDshTool<I extends JsonValue, O extends JsonValue>(
   action: Action<I, O>,
   options: DshActionOptions<I, O>,
@@ -142,12 +201,24 @@ export function asDshTool<I extends JsonValue, O extends JsonValue>(
   };
 }
 
+/**
+ * @deprecated Legacy DSH adapter leaf (frozen 2026-09-11, see COMPAT-DSH-002 in
+ * evidence/compatibility-register.md). It receives no new capability and is not the
+ * recommended integration path: use `@ordarium/core` with `@ordarium/host-kit`
+ * (custom host) or `@ordarium/host-mcp` (MCP) instead.
+ */
 export interface RegisterActionsOptions {
   runtime: OrdariumRuntime;
   authorize?: DshAuthorizer | undefined;
   scopeId?: string | ((context: DshToolRunContext) => string) | undefined;
 }
 
+/**
+ * @deprecated Legacy DSH adapter leaf (frozen 2026-09-11, see COMPAT-DSH-002 in
+ * evidence/compatibility-register.md). It receives no new capability and is not the
+ * recommended integration path: use `@ordarium/core` with `@ordarium/host-kit`
+ * (custom host) or `@ordarium/host-mcp` (MCP) instead.
+ */
 export function registerActions(
   context: DshPluginContext,
   actions: readonly AnyAction[],
@@ -180,6 +251,11 @@ export function registerActions(
  * Session recovery material binding (G5 design spec §3, source priority 1):
  * the host resolves the original invocation arguments by identity so G4's
  * reconcileOnly can verify them against the durable digests.
+ *
+ * @deprecated Legacy DSH adapter leaf (frozen 2026-09-11, see COMPAT-DSH-002 in
+ * evidence/compatibility-register.md). It receives no new capability and is not the
+ * recommended integration path: use `@ordarium/core` with `@ordarium/host-kit`
+ * (custom host) or `@ordarium/host-mcp` (MCP) instead.
  */
 export type DshRecoveryMaterialResolver = (invocation: {
   source: string;
@@ -187,6 +263,12 @@ export type DshRecoveryMaterialResolver = (invocation: {
   callId: string;
 }) => Promise<unknown | undefined> | unknown | undefined;
 
+/**
+ * @deprecated Legacy DSH adapter leaf (frozen 2026-09-11, see COMPAT-DSH-002 in
+ * evidence/compatibility-register.md). It receives no new capability and is not the
+ * recommended integration path: use `@ordarium/core` with `@ordarium/host-kit`
+ * (custom host) or `@ordarium/host-mcp` (MCP) instead.
+ */
 export interface CreateDshOrdariumOptions {
   databasePath?: string | undefined;
   runtime?: OrdariumRuntime | undefined;
@@ -195,6 +277,12 @@ export interface CreateDshOrdariumOptions {
   recoveryMaterial?: DshRecoveryMaterialResolver | undefined;
 }
 
+/**
+ * @deprecated Legacy DSH adapter leaf (frozen 2026-09-11, see COMPAT-DSH-002 in
+ * evidence/compatibility-register.md). It receives no new capability and is not the
+ * recommended integration path: use `@ordarium/core` with `@ordarium/host-kit`
+ * (custom host) or `@ordarium/host-mcp` (MCP) instead.
+ */
 export interface DshOrdarium {
   readonly runtime: OrdariumRuntime;
   readonly databasePath?: string | undefined;
@@ -207,6 +295,12 @@ export interface DshOrdarium {
   close(): Promise<void>;
 }
 
+/**
+ * @deprecated Legacy DSH adapter leaf (frozen 2026-09-11, see COMPAT-DSH-002 in
+ * evidence/compatibility-register.md). It receives no new capability and is not the
+ * recommended integration path: use `@ordarium/core` with `@ordarium/host-kit`
+ * (custom host) or `@ordarium/host-mcp` (MCP) instead.
+ */
 export function createDshOrdarium(options: CreateDshOrdariumOptions = {}): DshOrdarium {
   const databasePath = options.runtime === undefined
     ? options.databasePath ?? defaultDatabasePath()
@@ -241,6 +335,12 @@ export function createDshOrdarium(options: CreateDshOrdariumOptions = {}): DshOr
   };
 }
 
+/**
+ * @deprecated Legacy DSH adapter leaf (frozen 2026-09-11, see COMPAT-DSH-002 in
+ * evidence/compatibility-register.md). It receives no new capability and is not the
+ * recommended integration path: use `@ordarium/core` with `@ordarium/host-kit`
+ * (custom host) or `@ordarium/host-mcp` (MCP) instead.
+ */
 export function defaultDatabasePath(): string {
   const configured = process.env.DSH_HOME?.trim();
   const dshHome = configured === undefined || configured.length === 0
@@ -288,7 +388,19 @@ function renderJson(value: JsonValue): string {
   return typeof value === "string" ? value : JSON.stringify(value, null, 2);
 }
 
+/**
+ * @deprecated Legacy DSH adapter leaf (frozen 2026-09-11, see COMPAT-DSH-002 in
+ * evidence/compatibility-register.md). It receives no new capability and is not the
+ * recommended integration path: use `@ordarium/core` with `@ordarium/host-kit`
+ * (custom host) or `@ordarium/host-mcp` (MCP) instead.
+ */
 export { createOrdariumPlugin } from "./plugin.js";
+/**
+ * @deprecated Legacy DSH adapter leaf (frozen 2026-09-11, see COMPAT-DSH-002 in
+ * evidence/compatibility-register.md). It receives no new capability and is not the
+ * recommended integration path: use `@ordarium/core` with `@ordarium/host-kit`
+ * (custom host) or `@ordarium/host-mcp` (MCP) instead.
+ */
 export type { OrdariumPluginOptions, OrdariumPluginOps, OrdariumDshPlugin } from "./plugin.js";
 
 /**
@@ -296,8 +408,19 @@ export type { OrdariumPluginOptions, OrdariumPluginOps, OrdariumDshPlugin } from
  * /advanced - the root façade keeps its author golden path and never grows a
  * state surface. Palimpsest-style hosts construct the store over the shared
  * runtime they already consume.
+ *
+ * @deprecated Legacy DSH adapter leaf (frozen 2026-09-11, see COMPAT-DSH-002 in
+ * evidence/compatibility-register.md). It receives no new capability and is not the
+ * recommended integration path: use `@ordarium/core` with `@ordarium/host-kit`
+ * (custom host) or `@ordarium/host-mcp` (MCP) instead.
  */
 export { createStateStore } from "@ordarium/core";
+/**
+ * @deprecated Legacy DSH adapter leaf (frozen 2026-09-11, see COMPAT-DSH-002 in
+ * evidence/compatibility-register.md). It receives no new capability and is not the
+ * recommended integration path: use `@ordarium/core` with `@ordarium/host-kit`
+ * (custom host) or `@ordarium/host-mcp` (MCP) instead.
+ */
 export type {
   CreateStateStoreOptions,
   OrdariumStateStore,

@@ -6,6 +6,11 @@ import { type CreateDshOrdariumOptions, type DshOrdarium } from "./advanced.js";
  * ships as plugin functionality of its own - the operations plane. Action
  * authorship stays with business plugins; the shell never becomes a tool
  * registration framework.
+ *
+ * @deprecated Legacy DSH adapter leaf (frozen 2026-09-11, see COMPAT-DSH-002 in
+ * evidence/compatibility-register.md). It receives no new capability and is not the
+ * recommended integration path: use `@ordarium/core` with `@ordarium/host-kit`
+ * (custom host) or `@ordarium/host-mcp` (MCP) instead.
  */
 export interface OrdariumPluginOptions extends CreateDshOrdariumOptions {
     /**
@@ -18,6 +23,12 @@ export interface OrdariumPluginOptions extends CreateDshOrdariumOptions {
         readonly authorization: OperatorAuthorization;
     } | undefined;
 }
+/**
+ * @deprecated Legacy DSH adapter leaf (frozen 2026-09-11, see COMPAT-DSH-002 in
+ * evidence/compatibility-register.md). It receives no new capability and is not the
+ * recommended integration path: use `@ordarium/core` with `@ordarium/host-kit`
+ * (custom host) or `@ordarium/host-mcp` (MCP) instead.
+ */
 export interface OrdariumPluginOps {
     inspect(operationId: string): Promise<OperationView | undefined>;
     list(filter?: OperationListFilter, cursor?: string): Promise<{
@@ -45,9 +56,21 @@ export interface OrdariumPluginOps {
         signal?: AbortSignal | undefined;
     }): Promise<O>;
 }
+/**
+ * @deprecated Legacy DSH adapter leaf (frozen 2026-09-11, see COMPAT-DSH-002 in
+ * evidence/compatibility-register.md). It receives no new capability and is not the
+ * recommended integration path: use `@ordarium/core` with `@ordarium/host-kit`
+ * (custom host) or `@ordarium/host-mcp` (MCP) instead.
+ */
 export interface OrdariumDshPlugin extends DshOrdarium {
     readonly ops?: OrdariumPluginOps | undefined;
     dispose(): Promise<void>;
 }
+/**
+ * @deprecated Legacy DSH adapter leaf (frozen 2026-09-11, see COMPAT-DSH-002 in
+ * evidence/compatibility-register.md). It receives no new capability and is not the
+ * recommended integration path: use `@ordarium/core` with `@ordarium/host-kit`
+ * (custom host) or `@ordarium/host-mcp` (MCP) instead.
+ */
 export declare function createOrdariumPlugin(options?: OrdariumPluginOptions): OrdariumDshPlugin;
 //# sourceMappingURL=plugin.d.ts.map
