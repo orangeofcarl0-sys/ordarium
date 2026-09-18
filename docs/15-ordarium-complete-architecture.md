@@ -15,13 +15,13 @@ Ordarium 的准确产品形态是：
 
 1. **它是开发者基础设施，不是另一个 Agent Harness，也不是多 agent 调度器。** 各宿主继续拥有 Agent Loop、Tool Pipeline、Approval、Session、Credentials、Sandbox、Client Surface、HMR 与 Cordis 生命周期；agent 间的分派与编排不属于 Ordarium。
 2. **它不能作为透明拦截器，自动增强任意既有工具。** Ordarium 必须知道 Action 的稳定身份、effect profile、Provider 幂等或查询能力，才能作出可证明的恢复判断。
-3. **普通 DSH 插件作者只安装 `@ordarium/dsh`。** 根入口是精选 author façade 与唯一 `installOrdarium` golden path；低层 Runtime/Ledger 不从根入口宽重导出。其他宿主作者实现 HostInvocationPort 合同或采用对应宿主叶包。
+3. **接入路径是 host-neutral 的。** 默认入口是 `@ordarium/core`（Runtime + Action + Ledger port，低层类型按需显式引入）；宿主作者实现 HostInvocationPort 合同并采用对应宿主叶包（`@ordarium/host-kit` 对齐版本与 conformance，`@ordarium/host-mcp` 为现成 MCP 叶包）。**历史口径（已 supersede）**：最初写的是"普通 DSH 插件作者只安装 `@ordarium/dsh`，根入口是唯一 `installOrdarium` golden path"——该叶包已于 2026-09-11 冻结为 legacy（见 `12` 头部定位更新与 `COMPAT-DSH-002`）。
 4. **最终用户通常安装的是“Ordarium-aware 插件”，而不是单独安装 Ordarium。** 独立 Ordarium 插件只有在提供 operation inspect/reconcile 等运维入口时才有直接用户价值。
 5. **默认没有 daemon、端口、容器或远程控制平面。** 权威内核与插件同进程运行；managed 默认写本机 SQLite，纯读取/测试/明确 unmanaged 才可显式选择 volatile ledger。
 6. **Palimpsest 只保留未来宿主接口。** 它不进入当前依赖图，也不影响首个版本的合同。
 7. **SQLite 是 reference ledger，不是 core 本体。** Runtime 按 LedgerCapabilities 决定某个 profile 是否可执行，能力不足或 durable ledger 打开失败必须 fail closed，禁止静默降级。
-8. **HostInvocationPort 是 core 的一等端口。** 宿主与 core 之间的最小边界（稳定 identity、分类 authorization evidence、AbortSignal、invocation metadata）由 core 冻结并进入 API snapshot；DSH adapter 只是它的第一个实现，不拥有合同。managed 副作用缺少宿主 identity 必须 `IDENTITY_REQUIRED` fail closed。
-9. **内核四包 + 宿主适配叶包布局。** 内核运行时包保持四个（core / ledger-sqlite / dsh / testing）；DSH 之外的宿主适配器以独立叶包加入 workspace，首个为发布门交付的 `@ordarium/host-mcp`。叶包依赖只允许 core（与默认 ledger），宿主协议 SDK 依赖只允许出现在叶包，不得反向或横向依赖。
+8. **HostInvocationPort 是 core 的一等端口。** 宿主与 core 之间的最小边界（稳定 identity、分类 authorization evidence、AbortSignal、invocation metadata）由 core 冻结并进入 API snapshot；DSH adapter 只是它的第一个实现（现为 legacy），不拥有合同。managed 副作用缺少宿主 identity 必须 `IDENTITY_REQUIRED` fail closed。
+9. **内核四包 + 宿主适配叶包布局。** 内核运行时包保持四个（core / ledger-sqlite / dsh / testing，其中 dsh 已 legacy 冻结）；宿主适配器以独立叶包加入 workspace：现役 `@ordarium/host-mcp` 与 `@ordarium/host-kit`，外加冻结的 `@ordarium/dsh`。叶包依赖只允许 core（与默认 ledger），宿主协议 SDK 依赖只允许出现在叶包，不得反向或横向依赖。
 
 因此，Ordarium 的最小完整产品不是“一个更小的 DSH”，也不是“一个调用日志插件”，而是以下组合：
 
@@ -32,7 +32,7 @@ Ordarium 的准确产品形态是：
 - CAS claim、lease 与 fencing；
 - Provider-aware recovery；
 - host-neutral HostInvocationPort 与宿主适配 conformance；
-- DSH host adapter 与 MCP 第二宿主叶包；
+- 现役宿主适配叶包（`@ordarium/host-mcp`、`@ordarium/host-kit`）与 legacy 的 DSH 适配叶包；
 - crash/conformance testing；
 - 轻量的 operation 可观测与安全处置入口；
 - 多宿主共账拓扑（共享本地 ledger 的命名空间隔离与跨 agent 审计可见性）。
@@ -41,11 +41,13 @@ Ordarium 的准确产品形态是：
 
 ## 2. 生态位与系统边界
 
+> **2026-09-11 定位更新（本架构现行口径）**：接入路径以 `@ordarium/core` + `HostInvocationPort` 为默认，宿主适配叶包为现役 `@ordarium/host-mcp` / `@ordarium/host-kit`；最初的首宿主适配 **`@ordarium/dsh` 已冻结为 legacy**（`COMPAT-DSH-002`）。下文图与表中凡以 DSH 作为"普通作者路径/首宿主"的表述，均为该适配交付时点的历史口径（保留存史）；DSH 作为**宿主边界示例**的引用继续有效。
+
 全文图例约定：实线箭头表示当前或目标合同中的必经调用/数据流，双向箭头表示权威存储读写；虚线只表示辅助能力、验证、禁止依赖或未来扩展，必须以边上的文字为准。`subgraph` 表示职责或信任边界，只有第 16 节的 subgraph 同时表示部署边界。带“未来/待实现”的框不是现有产品能力；实际完成状态统一由第 18、20、26 节判定，而不靠颜色暗示。
 
 ```mermaid
 flowchart TB
-    USER["最终用户 / Agent"] --> HOST["DSH 或类 DSH Harness"]
+    USER["最终用户 / Agent"] --> HOST["任意 Harness<br/>自建 / MCP / DSH（legacy）"]
 
     subgraph HOST_OWNED["宿主拥有的职责"]
         LOOP["Agent Loop / Tool Pipeline"]
@@ -84,8 +86,8 @@ flowchart TB
 
 | 角色 | 安装形态 | 直接收益 |
 |---|---|---|
-| DSH 插件作者 | 依赖 `@ordarium/dsh` | 用一个 Action 定义获得持久去重、崩溃恢复与测试夹具 |
-| 其他 Harness 作者 | 依赖 `@ordarium/core` 与一个 ledger，实现 HostInvocationPort 合同 | 复用内核而不采用 DSH；合同由宿主 conformance harness 验证 |
+| 宿主 / 嵌入作者（默认） | 依赖 `@ordarium/core` 与一个 ledger，实现 HostInvocationPort 合同 | 用一个 Action 定义获得持久去重、崩溃恢复与测试夹具；合同由宿主 conformance harness 验证 |
+| DSH 插件作者（legacy） | 依赖 `@ordarium/dsh`（已冻结） | 既有集成路径；新接入请改用上一行 |
 | MCP 客户端 harness / 宿主 | 消费 `@ordarium/host-mcp` 暴露的 MCP 工具面 | 不写适配代码即获得 Ordarium Safe Action 与运维入口 |
 | 多 agent 部署者 | 多个 agent/进程/宿主共享同一本地 ledger | 统一去重、claim 协调与跨 agent 审计视图（共账拓扑） |
 | 最终用户 | 安装一个 Ordarium-aware 业务插件 | 避免重放、崩溃或并发造成重复支付、发信、创建或删除 |
@@ -139,7 +141,7 @@ flowchart TB
     end
 
     subgraph L2["L2 宿主适配"]
-        DSH_ADAPTER["DSH Host Adapter<br/>首宿主"]
+        DSH_ADAPTER["DSH Host Adapter<br/>[legacy·已冻结] 首宿主"]
         MCP_ADAPTER["[发布门] MCP Host Adapter<br/>@ordarium/host-mcp 第二宿主"]
         FUTURE_ADAPTER["[发布后] 其他宿主 Adapter"]
     end
@@ -927,7 +929,7 @@ Ordarium 是协作式正确性内核，不是操作系统级安全 reference mon
 
 Operations Port 必须由宿主权限保护。默认面向模型的 view 应省略 authorization reason、actor、完整 lineage 和可能敏感的 result/receipt；完整审计视图只交给受权 operator。
 
-默认本地 SQLite 是一个 OS-user trust domain，不是多租户安全边界。`identity.scope` 只参与 operation identity，不能阻止同进程插件读取其他 scope。若 DSH 部署服务于互不信任的 tenant，必须按 tenant 使用不同 database path/进程权限，或未来使用带 ACL 的远程 ledger；仅在 `list()` 上加过滤条件不足以形成隔离。
+默认本地 SQLite 是一个 OS-user trust domain，不是多租户安全边界。`identity.scope` 只参与 operation identity，不能阻止同进程插件读取其他 scope。若部署服务于互不信任的 tenant，必须按 tenant 使用不同 database path/进程权限，或未来使用带 ACL 的远程 ledger；仅在 `list()` 上加过滤条件不足以形成隔离。
 
 确定性 SHA-256 digest 只避免直接保存原文，不等于加密：它会暴露相等关系，低熵邮箱、账号或短 key 还可能被离线字典猜测。Credential 不得作为 Action input/key；敏感对象应通过宿主 credential handle 或高熵 opaque reference 间接引用。未来若引入 keyed digest，必须解决多个进程共享密钥与轮换后历史 identity 的兼容问题，不能轻率替换当前 operation id。
 
@@ -970,7 +972,7 @@ Operation record 是去重安全状态，不是可随意删除的日志。首个
 
 Lease 当前使用同一主机的 wall clock 与定时 heartbeat。系统时钟大幅跳变或 event-loop 长时间停顿可能导致过早/过晚 takeover；真实双进程测试必须加入 forward/backward clock 与 stall 场景。Provider fencing 仍是防止旧 owner 恢复执行的最终外部防线。未来多主机实现必须改用 authority-controlled time，不能沿用本地 wall clock 假设。
 
-平台政策已经收敛：SQLite/DSH durable default 的最低目标是 Node 24.15.0，并接受该版本起 `node:sqlite` 的 release-candidate 状态，以换取零 native runtime dependency；最低版本与发布时当前 Node 必须通过 G2/G7 矩阵。Core/Testing 的最低 Node 单独按实际 API 决定。若矩阵证明内置 binding 不满足合同，只能在 ledger 边界替换，不得改变 core 的 Action/Operation 合同，也不得自动退化为 MemoryLedger。
+平台政策已经收敛：SQLite/宿主 durable default 的最低目标是 Node 24.15.0，并接受该版本起 `node:sqlite` 的 release-candidate 状态，以换取零 native runtime dependency；最低版本与发布时当前 Node 必须通过 G2/G7 矩阵。Core/Testing 的最低 Node 单独按实际 API 决定。若矩阵证明内置 binding 不满足合同，只能在 ledger 边界替换，不得改变 core 的 Action/Operation 合同，也不得自动退化为 MemoryLedger。
 
 ## 25. 公共错误与调用者动作
 

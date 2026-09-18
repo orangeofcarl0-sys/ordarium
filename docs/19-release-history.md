@@ -72,7 +72,15 @@ record schemaVersion            →  OperationRecord v2 / StateRecord v1
 
 四者**互相独立**：包版本 bump 不自动 bump 宿主合同版本或库 schema；库 schema 迁移会按 docs/18 §1 ② 在 release notes 披露。
 
-## 5. 历史可重建性
+## 5. 待披露项（已决定，尚未随版本发布）
+
+| 决定日 | 事项 | 将影响 | 处置 |
+|---|---|---|---|
+| 2026-09-11 | `@ordarium/dsh` 叶包**冻结为 legacy**（文档叙事去 DSH 中心化；自建宿主为一等路径） | 下一次发布的 release notes（docs/18 §1 ⑤ 弃用面） | 登记 `COMPAT-DSH-002`；**零 API/schema 变更、零 breaking**——包继续随线发布，既有消费者零改动；物理迁移仍受 docs/17 §16 第 6 项双条件约束并休眠 |
+
+> 说明：本文 §2 只记录**已发布**的版本；上表是已决定但尚未打包进任何版本的消费者可见变化，避免它在发布时被遗漏。
+
+## 6. 历史可重建性
 
 - 每个版本的**交付报告与 delta sheet** 落在 `evidence/<goal>/`，`ordarium-v1.3.0` 与 `ordarium-v1.3.1` 的规范文本分别保留 ORD-BOOT-0 与 ORD-BOOT-0.1 的原始语义（后者以日期化指针 supersede 前者的具体条款，不删除前文）。
 - 快照（`snapshots/`）与 Delta Sheet 同批提交；`verify:architecture` 在无解释漂移时失败。

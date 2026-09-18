@@ -2,13 +2,13 @@
 
 ## 前置条件
 
-- DSH 宿主（插件运行环境）；纯宿主/测试场景可直接用 core；
-- Node.js：`@ordarium/ledger-sqlite`、`@ordarium/dsh`、`@ordarium/host-mcp` 要求 **`>=24.15.0`**；`@ordarium/core`、`@ordarium/testing` 仅要求 `>=24.0.0`；
+- 一个要接入的宿主（任意 Node harness：自建 / MCP / DSH 等）——若只是嵌入或测试，直接用 `@ordarium/core` 即可，不必先有宿主；
+- Node.js：`@ordarium/ledger-sqlite`、`@ordarium/host-mcp`、`@ordarium/dsh`（legacy）要求 **`>=24.15.0`**；`@ordarium/core`、`@ordarium/testing`、`@ordarium/host-kit` 要求 `>=24.0.0`；
 - pnpm。
 
 ## 安装
 
-分发渠道为 GitHub（DSH 插件生态惯例）。三种方式：
+分发渠道为 GitHub。三种方式：
 
 **方式一：同 workspace 开发（推荐起步）**
 
@@ -26,7 +26,7 @@ pnpm add <release-assets>/ordarium-{core,ledger-sqlite,dsh,testing,host-mcp,host
 
 私有期下载 Release 资产需带 token；转公开后 URL 直接可用。六包互相依赖自洽（这正是 CI 里 `pnpm test:package` 验证的内容）。
 
-**方式三：pnpm 工作区成员消费（dsh profile 场景）**
+**方式三：pnpm 工作区成员消费（pnpm 宿主工程场景）**
 
 pnpm **无法**从同批 tarball 解析兄弟依赖（对 `@ordarium/core@1.3.1` 直奔 registry 404），方式二只适用于 npm。pnpm 消费者把 Release 资产解包为本地目录并改写为 workspace 成员：
 
@@ -39,7 +39,7 @@ done
 # （含 devDependencies——host-mcp 的 devDeps 里有 @ordarium/dsh）
 ```
 
-然后把六个解包目录加入消费工程（dsh profile）的 `pnpm-workspace.yaml` 的 `packages` 列表，`pnpm install --no-frozen-lockfile`。发布 tarball 本体不动，改写只发生在本地解包副本。
+然后把六个解包目录加入消费工程的 `pnpm-workspace.yaml` 的 `packages` 列表，`pnpm install --no-frozen-lockfile`。发布 tarball 本体不动，改写只发生在本地解包副本。如果你只需要 core + 一个宿主叶包，可以只解包 `core`/`ledger-sqlite`/`host-kit`（或 `host-mcp`）三个。
 
 > 版本锚随发布线推进：当前为 **1.3.1**（`ordarium-v1.3.1`）。逐版台账见 [`../19-release-history.md`](../19-release-history.md)。
 
@@ -50,12 +50,8 @@ done
 一个 Action = 一次可能产生外部副作用的工作单元。你要做的只有三件事：声明合同、选 effect profile、实现 `execute`。
 
 ```ts
-import {
-  defineAction,
-  effects,
-  installOrdarium,
-  schema,
-} from "@ordarium/dsh";
+import { OrdariumRuntime, defineAction, effects, schema } from "@ordarium/core";
+import { SqliteLedger } from "@ordarium/ledger-sqlite";
 
 const createTicket = defineAction({
   name: "ticket.create",          // 稳定的小写命名空间标识
@@ -77,9 +73,20 @@ const createTicket = defineAction({
   },
 });
 
-// 安装：普通插件作者的唯入口
-const ordarium = installOrdarium(ctx, { actions: [createTicket] });
+const runtime = new OrdariumRuntime({
+  ledger: new SqliteLedger("/var/lib/myapp/ordarium/operations.sqlite"),
+});
+
+// 直接调用（嵌入场景）：
+await runtime.run(createTicket, { title: "printer is on fire" }, {
+  identity: { source: "myapp", scope: sessionId, callId },
+  authorization: { decision: "allow", kind: "host-admission", source: "myapp:approval" },
+});
 ```
+
+**在宿主里运行时**，不要让宿主代码到处 `runtime.run`——把 `runtime.invoke` 作为 `HostInvocationPort` 交给宿主，宿主负责注入 identity、授权证据与取消信号。自建宿主用 `@ordarium/host-kit` 对齐宿主合同版本并提供 conformance 证据；现成叶包：`@ordarium/host-mcp`（MCP 协议）。
+
+> **旧路径（legacy）**：如果你维护的是既有 DSH 集成，`@ordarium/dsh`（`installOrdarium(ctx, { actions })`）与 `@ordarium/dsh/advanced` 仍然可用但**已冻结**；新接入请走上面的 host-neutral 路径。
 
 从这一刻起，`ticket.create` 的每次调用都会：获得稳定身份 → 记录分类授权 → 在调用 Provider **之前**持久化 `dispatched` → 执行 → 写入终态或诚实的 `uncertain`。
 
@@ -92,7 +99,7 @@ const ordarium = installOrdarium(ctx, { actions: [createTicket] });
 
 ## 数据存在哪
 
-默认 managed 模式使用内嵌 SQLite：`$DSH_HOME/ordarium/operations.sqlite`（未设置 `DSH_HOME` 时为 `~/.dsh/ordarium/operations.sqlite`）。ledger 里只有摘要与安全载荷——没有原始输入、凭据或堆栈（见 [02](02-core-concepts.md)#secret-边界）。
+默认 managed 模式使用进程内嵌的 SQLite：库路径由你的宿主决定（上例写死绝对路径；DSH 适配为 `$DSH_HOME/ordarium/operations.sqlite`）。ledger 里只有摘要与安全载荷——没有原始输入、凭据或堆栈（见 [02](02-core-concepts.md)#secret-边界）。
 
 ## 下一步
 

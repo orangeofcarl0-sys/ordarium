@@ -12,24 +12,25 @@ Ordarium 不实现审批策略——它**消费、分类、持久化**宿主的�
 
 managed profile（`guarded`/`idempotent`/`reconcilable`）在 dispatch 前必须有 `allow`；`read-only` 隐式允许（归类 `host-admission`，source 为 `implicit:<kind>`）。
 
-## DSH 侧的默认与定制
+## 宿主侧的默认与定制
 
-默认：工具体穿过 DSH admission 管道后，Adapter 记录 `{ decision: "allow", kind: "host-admission", source: "dsh:tool-body-admitted" }`——**这不是人工批准**。
+**默认（宿主准入）**：调用在你的宿主里穿过准入管道后，适配器记录 `{ decision: "allow", kind: "host-admission", source: "<host>:tool-body-admitted" }`——**这不是人工批准**，只是"宿主放行到工具体"这一事实。
 
-更强证据经 `authorize` 钩子映射（插件或 per-action binding 提供）：
+更强的证据由宿主的 `authorize` 钩子映射（`HostInvocationPort` 的 `invocation.authorization`，或适配叶包的 `authorize` 选项）：
 
 ```ts
-import { asDshTool } from "@ordarium/dsh/advanced";
-
-const tool = asDshTool(action, {
-  runtime,
-  authorize: async () => ({
+// 任意宿主：在构造 invocation 时注入分类证据
+const result = await runtime.invoke(action, input, {
+  identity: { source: "myhost", scope: sessionId, callId },
+  authorization: {
     decision: "allow",
     kind: "policy-decision",
-    source: "dsh:policy:payments",   // 宿主里真实存在的命名 policy
-  }),
+    source: "myhost:policy:payments",   // 宿主里真实存在的命名 policy
+  },
 });
 ```
+
+> **legacy**：DSH 适配的等价写法是 `asDshTool(action, { runtime, authorize })`（`@ordarium/dsh/advanced`），已冻结，仅为既有集成保留。
 
 ## 不可覆盖与矛盾
 

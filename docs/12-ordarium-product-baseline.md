@@ -4,10 +4,12 @@
 > 状态：**产品与开发者表面自 G1 起冻结，并已随发布线交付**（当前 1.3.1，见 `19`）。`PRODUCT-3` 把定位从“DSH-first SDK”提升为“多 agent harness 公共基石”：结构链 kernel-first 四层重排、HostInvocationPort 冻结、显式共账拓扑与真实第二宿主；变更依据见 `ordarium/evidence/delta-ARCH-001-host-neutral-cornerstone.md`。运行语义由 `13` 定义，当前工程基线由 `14` 记录，组件结构由 `15` 定义，全部 Mermaid 投影由 `16` 维护，实施顺序与验收以 `17` 为准，发布事实以 `19` 为准。
 >
 > 本文中"发布前/目标/待交付"的字样是 `PRODUCT-3` 冻结期的口径（保留存史）；发布门已于 1.0.0（2026-08-17）通过，其后追加的能力（G9 运维壳、G11 管理型 state、G16 打开退避、G18 host-kit、ORD-BOOT-0/0.1 变更订阅）见 `17` §16 与 `19`。
+>
+> **2026-09-11 定位更新（本基线现行口径）**：文档叙事**不再以 DSH 为中心**。Ordarium 的接入面只有 `HostInvocationPort`：**自建宿主是一等路径**（`@ordarium/host-kit` 为对齐工具），`@ordarium/host-mcp` 是现成的 MCP 叶包，而最初的首宿主适配 **`@ordarium/dsh` 已冻结为 legacy 叶包**（保留给既有消费者、不再演进、不作为推荐路径）。下文中"DSH 是首个宿主/普通 DSH 作者/Golden path 走 `@ordarium/dsh`"等表述均为该适配交付时点的历史口径，保留存史；现行路径见根 README 与 `docs/dev/08`。DSH 仍然只在"宿主保留自己的 Agent Loop/审批/凭据/沙箱/生命周期"这一**边界示例**意义上被引用。
 
 ## 1. 产品定义
 
-Ordarium 是多 agent harness 共用的基石层：一个可嵌入任意 Node Tool Harness 的 **Safe Action SDK 与 Effect Authority**（外加同账本的**管理型 state 与变更订阅**原语）。它不是 Harness、Agent Runtime、workflow engine、sandbox，也不是多 agent 调度器。DSH 是首个宿主；宿主中立性不是方向性口号，而是由冻结的 HostInvocationPort、可移植宿主 conformance harness 与真实第二宿主（`@ordarium/host-mcp`）机器证明的合同——该证明已随发布线交付（`evidence/G7`、`evidence/G18`、`evidence/ORD-BOOT-0.1`）。
+Ordarium 是多 agent harness 共用的基石层：一个可嵌入任意 Node Tool Harness 的 **Safe Action SDK 与 Effect Authority**（外加同账本的**管理型 state 与变更订阅**原语）。它不是 Harness、Agent Runtime、workflow engine、sandbox，也不是多 agent 调度器。宿主中立性不是方向性口号，而是由冻结的 HostInvocationPort、可移植宿主 conformance harness 与一个真实的**非 DSH** 宿主（`@ordarium/host-mcp`，MCP 协议）机器证明的合同——该证明已随发布线交付（`evidence/G7`、`evidence/G18`、`evidence/ORD-BOOT-0.1`）。DSH 曾是首个宿主适配，现为 legacy 叶包。
 
 面向用户，Ordarium 的承诺是：同一项可能产生外部副作用的工作，不会因为 tool call 重投、进程崩溃、session replay、跨 agent/跨宿主重投或并发执行而被系统悄悄当成一项全新的工作；当外部系统不足以证明结果时，Ordarium 返回明确的 `uncertain`，而不是盲重试。
 
@@ -53,7 +55,7 @@ DSH 当前已经承担以下职责：
 | Provider 幂等键、查询与未知结果闭环 | 由各工具自行处理 | 核心职责 |
 | 崩溃夹具与 Action/Provider conformance | 非通用工具合同 | 核心职责 |
 
-因此 Ordarium 的生态位不是“更小的 DSH”，而是任何 agent harness 及其副作用插件下方的公共可靠执行层。DSH 是首个宿主；`@ordarium/host-mcp` 在发布前作为真实第二宿主证明内核中立。多 agent 部署通过 identity/lineage/命名空间合同与显式共账拓扑获得同一套安全语义，而不是通过 Ordarium 提供调度。
+因此 Ordarium 的生态位不是“更小的 DSH”，而是任何 agent harness 及其副作用插件下方的公共可靠执行层。中立性由真实第二宿主 `@ordarium/host-mcp` 与可移植宿主 conformance runner 证明（首个宿主是 DSH，但那是历史事实，不是架构前提）。多 agent 部署通过 identity/lineage/命名空间合同与显式共账拓扑获得同一套安全语义，而不是通过 Ordarium 提供调度。
 
 ## 3. 谁为什么安装
 
@@ -93,31 +95,30 @@ DSH 当前已经承担以下职责：
 
 ```mermaid
 flowchart TB
-    AUTHOR["普通 DSH 插件作者"] --> ROOT["@ordarium/dsh<br/>精选 author façade"]
-    ROOT --> GOLDEN["defineAction + effects + schema/defineSchema<br/>installOrdarium + 必要 author types"]
-
-    ADV_AUTHOR["高级 DSH 集成作者"] --> ADV["@ordarium/dsh/advanced<br/>per-action binding / lifecycle / Ops binding"]
-    HOST_AUTHOR["其他 Host / harness 作者"] --> HOST_MCP["@ordarium/host-mcp<br/>[已交付] MCP 第二宿主叶包"]
-    HOST_AUTHOR --> HOST_KIT["@ordarium/host-kit<br/>[已交付] versioned Host Adapter 叶包"]
-    HOST_AUTHOR --> CORE["@ordarium/core<br/>HostInvocationPort / Runtime / Operations / Ledger port<br/>StateStore / StateChangeFeed"]
-    EMBEDDER["自定义持久化嵌入者"] --> SQLITE["@ordarium/ledger-sqlite"]
+    EMBEDDER_AUTHOR["嵌入/宿主作者（默认路径）"] --> CORE["@ordarium/core<br/>HostInvocationPort / Runtime / Operations / Ledger port<br/>StateStore / StateChangeFeed"]
+    EMBEDDER_AUTHOR --> SQLITE["@ordarium/ledger-sqlite"]
+    HOST_AUTHOR["自建宿主作者"] --> HOST_KIT["@ordarium/host-kit<br/>[已交付] versioned Host Adapter 叶包"]
+    HOST_AUTHOR --> HOST_MCP["@ordarium/host-mcp<br/>[已交付] MCP 宿主叶包"]
     TEST_AUTHOR["Action / Provider 作者"] --> TESTING["@ordarium/testing"]
 
-    ROOT --> CORE
-    ROOT --> SQLITE
-    ADV --> CORE
-    ADV --> SQLITE
+    LEGACY_AUTHOR["既有 DSH 集成（legacy）"] --> ROOT["@ordarium/dsh<br/>[legacy·已冻结] 最初的宿主适配 façade"]
+    ROOT --> ROOT_ADV["@ordarium/dsh/advanced<br/>per-action binding / lifecycle / Ops binding"]
+
     HOST_MCP --> CORE
     HOST_MCP --> SQLITE
     HOST_KIT --> CORE
     HOST_KIT --> TESTING
     SQLITE --> CORE
     TESTING --> CORE
+    ROOT --> CORE
+    ROOT --> SQLITE
+    ROOT_ADV --> CORE
+    ROOT_ADV --> SQLITE
 
-    ROOT -.->|"根入口不重导出"| INTERNAL["OrdariumRuntime / MemoryLedger / SqliteLedger<br/>raw OperationRecord / migration internals"]
+    CORE -.->|"不重导出低层"| INTERNAL["OrdariumRuntime / MemoryLedger / SqliteLedger<br/>raw OperationRecord / migration internals"]
 ```
 
-内核包保持**四个**（core / ledger-sqlite / dsh / testing）；其上叠加**宿主适配叶包**（已交付两个：`@ordarium/host-mcp`、`@ordarium/host-kit`），共六包发布。`@ordarium/dsh/advanced` 是同一个 DSH 包的显式 subpath，不是第五个内核包。**官方插件壳（G9）**：`createOrdariumPlugin` 位于 `/advanced`——进程级 Ordarium 实例所有者 + 唯一自有功能"运维面"（opt-in ops 工具）；它不做 action 注册面、不做调度。`@ordarium/host-mcp` 是**宿主适配叶包**：只依赖 core 与默认 ledger，承载宿主协议 SDK 依赖，不得反向被内核依赖，也不与其他宿主叶包横向依赖。`@ordarium/host-kit`（G18）是**versioned Host Adapter 叶包**：curated 适配面 + `assertHostContract` exact-match 握手 + conformance runner re-export；架构门对叶包的依赖规则单独成档（叶包可依赖 conformance kit，内核包永不依赖叶包）。
+内核包保持**四个**（core / ledger-sqlite / dsh / testing）；其上叠加**宿主适配叶包**：现役两个（`@ordarium/host-mcp`、`@ordarium/host-kit`），外加**冻结为 legacy** 的 `@ordarium/dsh`，共六包发布。`@ordarium/dsh/advanced` 是同一个包的 subpath，不是第五个内核包。**官方插件壳（G9）**：`createOrdariumPlugin` 位于 `/advanced`——进程级 Ordarium 实例所有者 + 唯一自有功能"运维面"（opt-in ops 工具）；它不做 action 注册面、不做调度；随该包一并冻结。`@ordarium/host-mcp` 是**宿主适配叶包**：只依赖 core 与默认 ledger，承载宿主协议 SDK 依赖，不得反向被内核依赖，也不与其他宿主叶包横向依赖。`@ordarium/host-kit`（G18）是**versioned Host Adapter 叶包**：curated 适配面 + `assertHostContract` exact-match 握手 + conformance runner re-export；架构门对叶包的依赖规则单独成档（叶包可依赖 conformance kit，内核包永不依赖叶包）。
 
 冻结后的导出政策是：
 
@@ -129,11 +130,11 @@ flowchart TB
 
 当前 private `0.2.0` 的宽重导出不是兼容承诺；G1 以 clean break 切换 root/subpath export map 与 golden path，G5 再在同一表面内接入正式 DSH public types/lifecycle，不重开第二个 façade。差距只记录在 `14`。
 
-## 6. Schema、授权证据与 DSH 适配边界
+## 6. Schema、授权证据与宿主适配边界（原 "DSH 适配边界"；该适配已 legacy）
 
 Ordarium 的 `ActionSchema<T>` 是最小宿主中立端口：一个 JSON Schema 加一个确定性 runtime parser。内置 `schema.*` 只是零依赖便利层；已经使用其他 validator 的作者通过 `defineSchema(jsonSchema, parse)` 适配，不要求把项目迁移到第二套 schema 生态，也不把 Zod、Valibot 或特定 DSH schema 包加入 core 依赖。
 
-DSH 适配器必须基于明确支持的 DSH public types/lifecycle，而不是长期维护私有猜测类型。它映射：
+**任意宿主适配器**（历史正文以 DSH 适配为例，其结论对一切宿主成立）必须基于宿主明确支持的 public types/lifecycle，而不是长期维护私有猜测类型。它映射：
 
 - `name`、`description`、`parameters` 与 `output.schema/render`；
 - `execute(args, ToolRunContext)`、`timeoutMs` 与 concurrency binding；
@@ -141,7 +142,7 @@ DSH 适配器必须基于明确支持的 DSH public types/lifecycle，而不是�
 - `host-admission`、`policy-decision`、`human-approval` 三类可区分的 Action authorization evidence；
 - register、quiesce、unregister、drain/abort、persist 与 close 的生命周期响应。
 
-这不是绕开 DSH pipeline。Ordarium Action 仍由 DSH 注册、校验、guard、approval、timeout、结果 materialization 和 Session 事件路径包围。工具主体穿过原生 pipeline 后，Adapter 可以记录 `kind=host-admission, source=dsh:tool-body-admitted`；它绝不等于人工批准。更强证据由宿主 policy/approval 映射提供，而不是由 Ordarium 伪造。
+这不是绕开宿主 pipeline。Ordarium Action 仍由宿主注册、校验、guard、approval、timeout、结果 materialization 和会话事件路径包围。工具主体穿过原生 pipeline 后，适配器可以记录 `kind=host-admission, source=<host>:tool-body-admitted`；它绝不等于人工批准。更强证据由宿主 policy/approval 映射提供，而不是由 Ordarium 伪造。
 
 ## 7. 轻量性与开发吸引力的发布验收（历史清单，已全部满足）
 
@@ -149,7 +150,7 @@ DSH 适配器必须基于明确支持的 DSH public types/lifecycle，而不是�
 
 Ordarium 只有同时满足以下条件才可以对外称为轻量、边界清楚且适合开发者采用：
 
-1. 普通 DSH 作者只安装一个直接依赖、调用一个安装入口，不配置 daemon、端口或外部数据库。
+1. 普通作者只需要一个直接依赖（`@ordarium/core`，加一个宿主叶包）与一个装配入口，不配置 daemon、端口或外部数据库。
 2. 普通路径只新增 Action contract、effect profile 与 Provider key/signal 传递；不要求作者组装 Runtime、Ledger、lease 或 recovery evaluator。
 3. `@ordarium/dsh` 根入口的 API snapshot 不含低层 Runtime/Ledger/record/migration 类型。
 4. 现有 schema/parser 可以经最小 adapter 复用，不强迫双 schema 定义。
@@ -159,8 +160,8 @@ Ordarium 只有同时满足以下条件才可以对外称为轻量、边界清�
 8. 长任务 heartbeat 不增长 semantic history，不反复改变 operation 的业务排序时间。
 9. README golden path 不要求先阅读 `12–17`；这些文档是维护与审计合同，不是使用前置课程。
 10. 只读插件可以明确不安装 Ordarium；产品不靠扩大到所有工具来证明价值。
-11. HostInvocationPort 是机器可验证的 core 导出（进入 API snapshot），DSH 特有类型不进入 core。
-12. 真实第二宿主（`@ordarium/host-mcp`）可用：MCP 客户端 harness 不经 DSH 即可消费 Ordarium Safe Action（**已交付**；并提供 versioned Host Adapter 叶包 `@ordarium/host-kit` 供自建宿主对齐宿主合同版本）。
+11. HostInvocationPort 是机器可验证的 core 导出（进入 API snapshot），任何宿主特有类型都不进入 core（历史正文以 DSH 为例）。
+12. 真实宿主可用，且**不依赖首个宿主适配**：MCP 客户端 harness 经 `@ordarium/host-mcp` 即可消费 Ordarium Safe Action（**已交付**；并提供 versioned Host Adapter 叶包 `@ordarium/host-kit` 供自建宿主对齐宿主合同版本）。
 13. 共账拓扑有验收 fixture：多个宿主/进程共享同一本地 ledger 时，operation 去重、claim 协调与命名空间隔离同时成立。
 
 ## 8. Ledger 选择、平台与部署决定
@@ -175,9 +176,9 @@ SQLite 不是 core 语义的一部分。Core 只依赖带能力声明的 `Operat
 
 Runtime 在第一次创建 operation 前检查 ledger capability。Managed write 使用不具备 crash-durable semantic CAS 与 live-lease coordination 的 ledger 时必须 `LEDGER_CAPABILITY_REQUIRED`，Provider 不得被调用。SQLite 打开失败也不得自动降级到 MemoryLedger；静默 fallback 会把一次安全配置故障变成副作用保证丢失。
 
-因此默认 DSH 部署仍是进程内 library + 一个本地 SQLite 数据库（WAL 模式会有受同一生命周期管理的 sidecar 文件），不增加 daemon、端口、容器或 Rust 二进制；这不是唯一可用 ledger，而是完整本地 durable contract 的 reference/default implementation。`@ordarium/dsh/advanced` 可以显式注入 custom ledger，也可以为纯读取、测试或明确 unmanaged 安装选择 volatile mode，但必须让较弱保证在类型、配置和诊断中可见。
+因此默认部署仍是进程内 library + 一个本地 SQLite 数据库（WAL 模式会有受同一生命周期管理的 sidecar 文件），不增加 daemon、端口、容器或 Rust 二进制；这不是唯一可用 ledger，而是完整本地 durable contract 的 reference/default implementation。宿主可以显式注入 custom ledger，也可以为纯读取、测试或明确 unmanaged 安装选择 volatile mode，但必须让较弱保证在类型、配置和诊断中可见。
 
-首发 `@ordarium/ledger-sqlite` 与 DSH durable default 继续采用 Node 内置 `node:sqlite`，以维持零 native runtime dependency。它们的最低目标版本冻结为 Node `24.15.0`，因为该版本线从 24.15 起把 SQLite 标记为 release candidate；`@ordarium/core` 与 `@ordarium/testing` 的最低 Node 版本独立由实际 API 与测试矩阵决定，不被 SQLite 人为抬高。G2/G7 必须以最低版本和发布时选定的当前 Node 版本完成真实文件、backup、migration 与双进程矩阵；在这些 gate 通过前，不把“内置”误写成“无风险稳定”。
+首发 `@ordarium/ledger-sqlite` 与宿主 durable default 继续采用 Node 内置 `node:sqlite`，以维持零 native runtime dependency。它们的最低目标版本冻结为 Node `24.15.0`，因为该版本线从 24.15 起把 SQLite 标记为 release candidate；`@ordarium/core` 与 `@ordarium/testing` 的最低 Node 版本独立由实际 API 与测试矩阵决定，不被 SQLite 人为抬高。G2/G7 必须以最低版本和发布时选定的当前 Node 版本完成真实文件、backup、migration 与双进程矩阵；在这些 gate 通过前，不把“内置”误写成“无风险稳定”。
 
 ## 9. 非目标
 

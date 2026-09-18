@@ -38,8 +38,8 @@ const runtime = new OrdariumRuntime({ allowVolatileLedger: true });
 
 ## 默认数据库与部署拓扑
 
-- 路径：`$DSH_HOME/ordarium/operations.sqlite`，未设置时 `~/.dsh/ordarium/operations.sqlite`（WAL 模式，会有受同一生命周期管理的 sidecar 文件）；
-- managed DSH 默认声明 `local-multi-process` 拓扑：多个本机进程可打开同一文件竞争 operation（真实双进程夹具在 CI 里验证）。跨主机/网络文件系统不在承诺内。
+- 路径由宿主决定（DSH 适配的历史默认是 `$DSH_HOME/ordarium/operations.sqlite`，未设置时为 `~/.dsh/ordarium/operations.sqlite`）；WAL 模式会有受同一生命周期管理的 sidecar 文件；
+- 默认嵌入式部署声明 `local-multi-process` 拓扑：多个本机进程可打开同一文件竞争 operation（真实双进程夹具在 CI 里验证）。跨主机/网络文件系统不在承诺内。
 
 ## 自定义 ledger（高级）
 

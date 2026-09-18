@@ -79,7 +79,30 @@ pnpm verify:release       passed（check / architecture / integration / conforma
 
 未在本次运行：`verify:matrix`（Docker 双腿）——本次不触及代码/依赖，最近一次全绿记录见 `evidence/ORD-BOOT-0.1/exit-report.md` §5。
 
-## 7. 后续维护约定
+## 7. 追加（同日第二次扫描）：去 DSH 中心化与 DSH 叶包 legacy 化
+
+**触发**：所有者决议——文档叙事不再以 DSH 为中心；`@ordarium/dsh` 叶包已遗产化（legacy）。
+
+**依据（仓库自身已有的事实）**：`@ordarium/dsh` 的归属重审自 2026-09-07 起无限期休眠；姊妹仓（Palimpsest）的四行 pin **从未包含该包**（零依赖面）；仓库内**没有任何 `src` 代码依赖它**——全部引用只在它自己的测试、`host-mcp` 的 devDependencies/测试与工具脚本中。它是一个无生产消费者的叶包。
+
+**处置（叙事面）**：
+
+| 位置 | 处置 |
+|---|---|
+| 根 README | 开头改为 host-neutral 定位（中立性由**非 DSH** 的真实宿主 host-mcp + 可移植 conformance 证明）；"最短路径"从 `installOrdarium(ctx)` 改为 `@ordarium/core` + `SqliteLedger` + `runtime.run` 并说明宿主用 `HostInvocationPort`；包表把 `@ordarium/dsh` 标为 legacy 并列出迁移路径 |
+| `docs/dev/01` | 前置条件与第一个 Action 示例改 core-first；新增 legacy 提示块；`dsh profile` 措辞去除 |
+| `docs/dev/05/07/11` | 授权默认值、运维面注入点、`createStateStore` 导入路径全部改为 host-neutral（`@ordarium/core`）；DSH 写法降级为 legacy 注释 |
+| `docs/dev/08` | 章节重排：自建宿主（一等）→ MCP → DSH（legacy 冻结，附归属重审指针） |
+| `docs/12` | 头部加"2026-09-11 定位更新"；§1/§3/§5/§6/§7/§8 的 DSH-中心表述改中性（历史原文标注存史）；包布局图重画为 core-first + legacy 节点 |
+| `docs/13` | §2 identity 映射改用 MCP 示例（DSH 降为 legacy 注）；§8 标题改"宿主映射（通用）"；生命周期/迁移/ops 注入点去 DSH 化 |
+| `docs/14` | §1 增"宿主适配"行（现役 vs legacy）；§3.B 标注为历史清单；§5 修正 Palimpsest 消费面（**不是** `@ordarium/dsh`） |
+| `docs/15`/`docs/16` | 头部加定位更新注记；首宿主节点、角色表、部署图、DSH Home 路径标为 legacy/历史 |
+
+**处置（治理面）**：新增兼容登记 `COMPAT-DSH-002`（边界 / 兼容来源 / canonical target = core + host-kit/host-mcp / owner / 移除条件 = 双条件 + major 线）；`docs/18` 修订行 RCP-5（下一次发布按 §1 ⑤ 披露弃用面）；`docs/19` 新增 §5"待披露项"；`docs/17` §16 第 6 项追加现行处置；`packages/dsh/package.json` 描述加 `[LEGACY]` 标记与迁移提示。
+
+**边界（明确不做）**：本次**不删除**该包、不改其 API/导出、不动快照、不 bump 版本、不 breaking——legacy 是治理状态而非移除；物理迁移仍受双条件约束并保持休眠。既有消费者零改动。
+
+## 8. 后续维护约定
 
 1. **新增"当前态"陈述时，必须写清它属于哪个版本**；历史口径一律加日期化注记而非就地改写；
 2. 每次发布后更新 `19`（只追加一行 + 明细小节）与根 README 的当前线；

@@ -2,9 +2,11 @@
 
 `uncertain` 必须可见、可安全处置——这就是运维面。它**默认不存在**，宿主必须显式注册并提供授权。
 
-## 官方插件壳（推荐接入方式）
+## 接入方式：host-neutral 优先
 
-`createOrdariumPlugin`（`@ordarium/dsh/advanced`）是进程级 Ordarium 实例的所有者，也是运维面的受信注入点：
+运维面本身是 **core 的 `OrdariumOperations`**（inspect / list / history / reconcile-only），宿主负责把它注册成自己的工具并注入 `OperatorAuthorization`。`@ordarium/host-mcp` 叶包演示了这条路径（`operations: { authorization }` 选项）。
+
+> **legacy**：DSH 适配曾提供 `createOrdariumPlugin`（`@ordarium/dsh/advanced`）作为进程级实例所有者与运维面注入点；该包已冻结，下面的片段仅对既有集成有效。
 
 ```ts
 import { createOrdariumPlugin } from "@ordarium/dsh/advanced";

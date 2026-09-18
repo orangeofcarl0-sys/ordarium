@@ -14,12 +14,12 @@
 
 ## 最短路径
 
-`createStateStore` 在 `@ordarium/dsh/advanced`（与 `createOrdariumPlugin` 同层）；state 面不进 root façade。
+`createStateStore` 在 **`@ordarium/core`**（host-neutral，与 Runtime 同层）。绑定 runtime 时它继承进程生命周期；只给 ledger 时读路径无需 runtime。
 
 ```ts
-import { createStateStore } from "@ordarium/dsh/advanced";
+import { createStateStore } from "@ordarium/core";
 
-const state = createStateStore({ runtime: plugin.runtime });  // 或 { ledger }
+const state = createStateStore({ runtime });  // 或 { ledger }
 
 await state.write({
   namespace: "palimpsest",        // 宿主声明分区：共账拓扑下的隔离约定
@@ -27,7 +27,7 @@ await state.write({
   expectedRevision: 0,            // 0 = 创建；否则基于当前修订号
   value: { goal: "ship", steps: ["a", "b"] },
   refs: [{ kind: "operation", id: operationId }],   // 一等引用，可省略
-  identity: { source: "dsh", scope: sessionId, callId },
+  identity: { source: "myhost", scope: sessionId, callId },   // 宿主自报来源
 });
 ```
 

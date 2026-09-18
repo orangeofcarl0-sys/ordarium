@@ -1,8 +1,12 @@
 # Ordarium
 
-Ordarium 是**多 agent harness 的公共基石**：一个轻量、可嵌入、host-neutral 的 **Safe Action SDK + Effect Authority + revisioned durable state primitives**。它不运行 Agent、不组装 Prompt、不调度或编排 agent，也不替代任何宿主 harness；它包住真正会产生副作用的 Action，使一次调用具备稳定身份、分类授权证据、持久状态、并发所有权和诚实的崩溃恢复语义；它也在同一账本上提供宿主声明的**管理型 state**（`(namespace, key)` 修订链 + refs）与**跨主体的增量变更观测**（`StateChangeFeed`），但不解释这些 state 的含义。DSH 是首个宿主；宿主中立性以真实第二宿主（`@ordarium/host-mcp`）与可移植宿主 conformance harness 机器证明，多个 agent/进程/宿主可共享同一本地 ledger（共账拓扑）。
+Ordarium 是**多 agent harness 的公共基石**：一个轻量、可嵌入、host-neutral 的 **Safe Action SDK + Effect Authority + revisioned durable state primitives**。它不运行 Agent、不组装 Prompt、不调度或编排 agent，也不替代任何宿主 harness；它包住真正会产生副作用的 Action，使一次调用具备稳定身份、分类授权证据、持久状态、并发所有权和诚实的崩溃恢复语义；它也在同一账本上提供宿主声明的**管理型 state**（`(namespace, key)` 修订链 + refs）与**跨主体的增量变更观测**（`StateChangeFeed`），但不解释这些 state 的含义。
 
-> 当前发布线为 **`1.3.1`**（正式线，MIT；六包）。**分发渠道为 GitHub**（DSH 插件生态惯例）：本仓库即包源，以 git tag + 同名 Release 为版本锚（`ordarium-v1.0.0` → `ordarium-v1.3.1` 均已发布）；公共 npm 发布未执行（1.0.0 时的尝试被账号 2FA 拒绝，零发布）。每版的档位、头条交付与消费者可见变化见 [`docs/19-release-history.md`](docs/19-release-history.md)。
+**宿主中立是可以用机器证明的合同，而不是口号**：接入面是冻结的 `HostInvocationPort`，任何符合该端口的 harness 都能消费；中立性由真实第二宿主（`@ordarium/host-mcp`，MCP 协议）与可移植的宿主 conformance runner（`@ordarium/host-kit`）验证。多个 agent/进程/宿主可共享同一本地 ledger（共账拓扑）。宿主适配器是**叶包**：新增一个宿主只增加一个叶包，内核与 Action 合同零改动。
+
+> 当前发布线为 **`1.3.1`**（正式线，MIT；六包）。**分发渠道为 GitHub**：本仓库即包源，以 git tag + 同名 Release 为版本锚（`ordarium-v1.0.0` → `ordarium-v1.3.1` 均已发布）；公共 npm 发布未执行（1.0.0 时的尝试被账号 2FA 拒绝，零发布）。每版的档位、头条交付与消费者可见变化见 [`docs/19-release-history.md`](docs/19-release-history.md)。
+>
+> **`@ordarium/dsh` 是 legacy 叶包**：它是最初的 DSH 宿主适配，现已冻结（只保留给既有消费者，不再新增能力，不再作为推荐路径）。新接入请走 host-neutral 路径：`@ordarium/core` + 自建宿主（`@ordarium/host-kit`）或 MCP（`@ordarium/host-mcp`）。
 
 ## 为什么安装
 
@@ -17,15 +21,11 @@ Ordarium 把这些判断从每个插件各自的 `try/catch` 中抽出来，形�
 
 ## 最短路径
 
-普通 DSH 插件只安装 `@ordarium/dsh`。根入口是精选 author façade；默认 managed 模式使用进程内嵌的本地 SQLite，不需要 daemon、端口或控制平面。
+两步：**声明 Action**，**给它一个 runtime + durable ledger**。没有 daemon、端口或控制平面；默认 managed 模式使用进程内嵌的本地 SQLite。
 
 ```ts
-import {
-  defineAction,
-  effects,
-  installOrdarium,
-  schema,
-} from "@ordarium/dsh";
+import { OrdariumRuntime, defineAction, effects, schema } from "@ordarium/core";
+import { SqliteLedger } from "@ordarium/ledger-sqlite";
 
 const createTicket = defineAction({
   name: "ticket.create",
@@ -36,18 +36,25 @@ const createTicket = defineAction({
   effect: effects.idempotent(),
   async execute(input, context) {
     return api.createTicket(input, {
-      idempotencyKey: context.idempotencyKey,
+      idempotencyKey: context.idempotencyKey,   // 稳定 operation key，跨重试复用
       signal: context.signal,
     });
   },
 });
 
-const ordarium = installOrdarium(ctx, { actions: [createTicket] });
+const runtime = new OrdariumRuntime({
+  ledger: new SqliteLedger("/var/lib/myapp/ordarium/operations.sqlite"),
+});
+
+const ticket = await runtime.run(createTicket, { title: "printer is on fire" }, {
+  identity: { source: "myapp", scope: sessionId, callId },
+  authorization: { decision: "allow", kind: "host-admission", source: "myapp:approval" },
+});
 ```
 
 `effects.idempotent()` 表示 Provider 能证明 durable operation-key idempotency；有限窗口必须显式写成 `effects.idempotent({ window: { kind: "finite", expiresAfterMs } })`。Finite deadline 在 operation 首次创建时冻结，重启或重试不会续期。
 
-默认数据库位于 `$DSH_HOME/ordarium/operations.sqlite`，未设置 `DSH_HOME` 时使用 `~/.dsh/ordarium/operations.sqlite`。
+**接入宿主时**不要直接调用 `runtime.run`，而是让宿主实现 `HostInvocationPort`（`runtime.invoke` 即该端口的实现）并注入 identity / 授权证据 / 取消信号；自建宿主用 `@ordarium/host-kit` 的 `assertHostContract` + `runHostAdapterConformance` 对齐宿主合同版本。现成的宿主适配叶包：`@ordarium/host-mcp`（MCP 协议）；`@ordarium/dsh`（legacy，冻结）。
 
 ## Effect profiles
 
@@ -105,19 +112,18 @@ JSON 文件或自制 append log 看似少一个数据库，实际还要重新实
 
 | 入口 | 面向谁 | 职责 |
 |---|---|---|
-| `@ordarium/dsh` | 普通 DSH 插件作者 | `defineAction`、`effects`、`schema/defineSchema`、`installOrdarium` 与必要作者类型 |
-| `@ordarium/dsh/advanced` | 高级 DSH 集成作者 | per-action binding、Operations binding、custom ledger、lifecycle tuning |
-| `@ordarium/core` | 宿主与框架作者 | Action/Host/Ledger port、Runtime、状态/恢复语义、管理型 state（`createStateStore`）与变更订阅（`StateChangeFeed`/`supportsStateChangeFeed`）、MemoryLedger、Operations |
+| `@ordarium/core` | **默认入口**：宿主与框架作者 | Action/Host/Ledger port、Runtime、状态/恢复语义、管理型 state（`createStateStore`）与变更订阅（`StateChangeFeed`/`supportsStateChangeFeed`）、MemoryLedger、Operations |
 | `@ordarium/ledger-sqlite` | 需要默认 durable 实现的嵌入者 | WAL、事务性 semantic CAS、独立 LiveLease、history、state 修订链与定序表（schema v4）、前向 migration、backup |
 | `@ordarium/host-mcp` | MCP 客户端 harness / 宿主 | MCP server 适配叶包：tools 面映射到 HostInvocationPort，ops 工具受权暴露 |
-| `@ordarium/host-kit` | 自建宿主适配者 | versioned Host Adapter：`assertHostContract` exact-match 握手 + curated 适配面 + `runHostAdapterConformance` runner re-export |
+| `@ordarium/host-kit` | **自建宿主适配者** | versioned Host Adapter：`assertHostContract` exact-match 握手 + curated 适配面 + `runHostAdapterConformance` runner re-export |
 | `@ordarium/testing` | Action 与 adapter 作者 | crash checkpoint、手动时钟、固定 identity、ledger/Provider/宿主 conformance（含 state 与变更订阅） |
+| `@ordarium/dsh` · `/advanced` | **legacy**：既有 DSH 集成 | 最初的 DSH 宿主适配（`installOrdarium`、per-action binding、官方插件壳与运维面）。**已冻结**：无新能力、不推荐新接入，仅为既有消费者保留 |
 
-根入口不会暴露 Runtime、Ledger、raw record 或 migration。需要这些能力的框架作者必须显式选择 advanced subpath 或对应低层包；Operations 仍留在 core，不拆第五个运行时包。
+内核包是四个（core / ledger-sqlite / dsh / testing），宿主适配以**叶包**加入（host-mcp / host-kit，以及 legacy 的 dsh）——新增宿主只加叶包，内核与 Action 合同零改动。`@ordarium/dsh/advanced` 是同一个包的 subpath，不是第五个内核包。core 的根入口不做宿主判断：宿主差异全部经由 `HostInvocationPort` 注入。
 
 ## 安全与宿主边界
 
-DSH 的 Agent Loop、Tool Pipeline、Approval、Credentials、Sandbox、Session、Client Surface、HMR 与 Cordis lifecycle 继续包围 Ordarium。Ordarium 只接收宿主注入的 identity、`host-admission | policy-decision | human-approval` evidence、cancellation signal 与短暂 credential/principal reference；它不实现第二套审批、安全沙箱或生命周期引擎。
+宿主保留自己的 Agent Loop、Tool Pipeline、Approval、Credentials、Sandbox、Session、Client Surface 与 lifecycle 管理；Ordarium 只接收宿主注入的 identity、`host-admission | policy-decision | human-approval` evidence、cancellation signal 与短暂 credential/principal reference。它不实现第二套审批、安全沙箱或生命周期引擎。
 
 Ledger 不保存 raw input、raw business key、credential、任意 stack 或未筛选 Provider response。可持久化 output/receipt 先经过 schema、JSON 与默认 1 MiB 单值上限；Provider principal 最多保存稳定 digest，不保存 credential。
 
@@ -125,7 +131,7 @@ Ledger 不保存 raw input、raw business key、credential、任意 stack 或未
 
 - Agent Loop、模型 Provider、Prompt/Context assembly；
 - **多 agent 调度器或编排引擎**（多 agent 协作安全通过 identity/命名空间合同与共账拓扑提供）；
-- 任何宿主的 Approval、Credentials、Sandbox、Session、Client Surface、HMR 或 Cordis 生命周期的替代实现；
+- 任何宿主的 Approval、Credentials、Sandbox、Session、Client Surface 或 lifecycle 实现（含 DSH 的 Cordis 生命周期）；
 - worker 协议、远程调度、Rust Runner、独立 daemon 或默认控制平面；
 - workflow、subagent scheduler 或 Palimpsest Runtime；
 - 默认多主机 authority、分布式共识或 secret vault。
@@ -136,7 +142,7 @@ Ledger 不保存 raw input、raw business key、credential、任意 stack 或未
 
 ## 安装（GitHub 分发）
 
-分发渠道为 GitHub（DSH 插件生态惯例；分发决议见 `evidence/G7/release-candidate-report.md` §5）。本工程为独立仓库（https://github.com/orangeofcarl0-sys/ordarium），六包位于 `packages/`，版本锚为 git tag（`ordarium-v1.0.0` → `ordarium-v1.3.1`）与同名 GitHub Release（自 `ordarium-v1.2.0` 起为六 tarball）。两种消费方式（dsh profile 等 pnpm 场景另有**工作区成员模式**，见 [docs/dev/01](docs/dev/01-getting-started.md)）：
+分发渠道为 GitHub（分发决议见 `evidence/G7/release-candidate-report.md` §5）。本工程为独立仓库（https://github.com/orangeofcarl0-sys/ordarium），六包位于 `packages/`，版本锚为 git tag（`ordarium-v1.0.0` → `ordarium-v1.3.1`）与同名 GitHub Release（自 `ordarium-v1.2.0` 起为六 tarball）。两种消费方式（pnpm 场景另有**工作区成员模式**，见 [docs/dev/01](docs/dev/01-getting-started.md)）：
 
 **方式一：同 workspace 开发（推荐起步；Palimpsest 复兴插件即此路径）**
 

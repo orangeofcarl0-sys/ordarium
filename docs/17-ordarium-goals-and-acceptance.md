@@ -740,7 +740,11 @@ G8 不阻塞首发（第二宿主 `host-mcp` 已在 G5 交付）。它只在首�
 3. 根据采用情况改善 operator UX，但不扩大为通用控制平面；
 4. Palimpsest Runtime 稳定重构后，才实现 versioned Host Adapter；
 5. 多主机真实需求出现后才立项 remote authority-controlled time/ACL ledger；
-6. **DSH 适配器归属重审（2026-09-06 评估，双条件触发；2026-09-07 处置：无限期休眠）**：`@ordarium/dsh` 是官方首宿主适配叶包（含 G9 运维面），内核纯度不受其影响（core 零宿主导入为机器门）。当 **(a) 官方 DSH 类型可消费（COMPAT-DSH-001 的前置约束解除）** 且 **(b) DSH 生态愿意持有自身适配器** 两条件同时成立时，可将 `@ordarium/dsh` 的宿主映射部分迁往 DSH 仓（Palimpsest 的“镜像→零改动切换”为先例），ordarium 侧 G9 运维面随之单独裁决去留。迁移属 breaking 变更：须经兼容登记（owner + 移除条件）并以 major 线执行。双条件不成立前不拆分——零内核纯度增益，纯付发布面代价。**2026-09-07 裁决**：无限期休眠而非正式关闭——姊妹侧用户裁决放弃跟进（其四行 pin 恒不含 `@ordarium/dsh`，零依赖面；r10 已判重审双条件不挂 Palimpsest，见姊妹 07 r17/r18），本侧认定双条件系叶包自身的 DSH 生态条件、非内核外部采用前置；休眠零成本、正式关闭将抬高未来复活门槛，休眠期间零动作。
+6. **DSH 适配器归属重审（2026-09-06 评估，双条件触发；2026-09-07 处置：无限期休眠；2026-09-11 追加：冻结为 legacy）**：
+
+   **2026-09-11 决议（本项现行处置）**：`@ordarium/dsh` 叶包**冻结为 legacy**——文档叙事不再以 DSH 为中心（自建宿主为一等路径，`@ordarium/host-mcp`/`@ordarium/host-kit` 为现役叶包），该包不再新增能力、不再作为推荐接入路径、其缺陷不阻塞内核线；compat 登记见 `COMPAT-DSH-002`，下一次发布的 release notes 按 docs/18 §1 ⑤ 披露弃用面。**这不等于删除**：包继续随发布线发布、既有消费者零破坏（无 API 变更、无 breaking），物理迁移/拆分仍受下述双条件约束并保持休眠（迁移属 breaking，须 major 线 + 兼容登记）。
+
+   原休眠决议：`@ordarium/dsh` 是官方首宿主适配叶包（含 G9 运维面），内核纯度不受其影响（core 零宿主导入为机器门）。当 **(a) 官方 DSH 类型可消费（COMPAT-DSH-001 的前置约束解除）** 且 **(b) DSH 生态愿意持有自身适配器** 两条件同时成立时，可将 `@ordarium/dsh` 的宿主映射部分迁往 DSH 仓（Palimpsest 的“镜像→零改动切换”为先例），ordarium 侧 G9 运维面随之单独裁决去留。迁移属 breaking 变更：须经兼容登记（owner + 移除条件）并以 major 线执行。双条件不成立前不拆分——零内核纯度增益，纯付发布面代价。**2026-09-07 裁决**：无限期休眠而非正式关闭——姊妹侧用户裁决放弃跟进（其四行 pin 恒不含 `@ordarium/dsh`，零依赖面；r10 已判重审双条件不挂 Palimpsest，见姊妹 07 r17/r18），本侧认定双条件系叶包自身的 DSH 生态条件、非内核外部采用前置；休眠零成本、正式关闭将抬高未来复活门槛，休眠期间零动作。
 
 验收重点是“替换/新增 adapter 不改 core/Action contract”。如果某个新宿主迫使 core 引入 host-specific 字段，说明 HostInvocationPort 不完整，应修正 port，而不是增加宿主判断层。
 

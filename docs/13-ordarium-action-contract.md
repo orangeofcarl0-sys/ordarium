@@ -69,14 +69,16 @@ type EffectProfile =
 source + scope + callId
 ```
 
-DSH 映射为：
+宿主映射举例（MCP 叶包）：
 
 ```text
-source     = "dsh"
-scope      = agent.session.id → agent.id → "dsh"
-callId     = ToolRunContext.callId
-rootCallId = ToolRunContext.rootCallId
+source     = "mcp"
+scope      = clientInfo.name
+callId     = 请求 id
+rootCallId = 可选的关联 id（不参与去重）
 ```
+
+> **legacy 示例**：DSH 适配的映射是 `source="dsh"`、`scope = agent.session.id → agent.id → "dsh"`、`callId = ToolRunContext.callId`、`rootCallId = ToolRunContext.rootCallId`；该适配已冻结，仅为既有集成保留。
 
 Action 可以用 `key(input, identity)` 改成稳定业务键。Ordarium 不保存原始 key，只保存摘要。
 
@@ -96,7 +98,7 @@ idempotency_key    = operation_id
 - action/version、logical key digest 和 input digest 全部相同：视为同一工作；
 - 任一不同：抛出 `OPERATION_CONFLICT`，不得静默覆盖或创建第二项工作。
 
-DSH adapter 总是提供显式 identity。其他宿主也必须如此。首个发布合同要求 managed side-effect Action 在直接调用 core 时没有显式稳定 identity 就 fail closed；随机 process-local identity 只允许用于 `read-only` 或明确 `unmanaged` 调用，且不提供跨重启恢复保证。当前 Runtime 的随机 direct identity 是待收紧的实现兼容项。
+**每个**宿主适配器都必须提供显式 identity。managed side-effect Action 在直接调用 core 时若没有显式稳定 identity 即 fail closed（`IDENTITY_REQUIRED`，G1 交付并机器验证）；随机 process-local identity 只允许用于 `read-only` 或明确 `unmanaged` 调用，且不提供跨重启恢复保证。
 
 ## 3. 状态与权威顺序
 
@@ -119,7 +121,7 @@ stateDiagram-v2
 
 必须先持久化 `dispatched`，然后才允许调用外部 Provider。`claimed` 通过 revision CAS 获得，并分配单调递增的 fencing token。终态成功结果可直接复用，不重新调用 Action。
 
-运行时选择的 conformant ledger 是 operation record 的当前权威副本；默认 managed DSH 使用 SQLite。语义状态、claim acquisition/fence 与终态 `semanticRevision` 追加完整快照事件，用于审计状态轨迹。Live lease 是独立 operational liveness，不属于业务历史。MemoryLedger 只用于测试、纯读取、显式 `unmanaged`，或明确不要求进程恢复的嵌入场景。
+运行时选择的 conformant ledger 是 operation record 的当前权威副本；默认 managed 部署使用 SQLite。语义状态、claim acquisition/fence 与终态 `semanticRevision` 追加完整快照事件，用于审计状态轨迹。Live lease 是独立 operational liveness，不属于业务历史。MemoryLedger 只用于测试、纯读取、显式 `unmanaged`，或明确不要求进程恢复的嵌入场景。
 
 ```mermaid
 flowchart LR
@@ -157,7 +159,7 @@ Action authorization evidence 的 `kind` 只允许：
 | `policy-decision` | 宿主明确命名的 policy/guard 给出决定 | 人工确认 |
 | `human-approval` | 宿主 approval 系统给出可审计的人类决定 | Provider 已执行或结果已成功 |
 
-DSH 适配器在工具主体已经穿过 DSH admission pipeline 后提供 `decision=allow, kind=host-admission, source=dsh:tool-body-admitted`。要求特定 policy 或人类确认的插件必须通过 DSH 原生配置与 binding 提供相应 evidence；Ordarium 只验证、持久化和检测冲突，不实现审批策略，也不从字符串 source 猜测 kind。
+宿主适配器在工具主体已经穿过原生 admission pipeline 后提供 `decision=allow, kind=host-admission, source=<host>:tool-body-admitted`（DSH 适配的历史取值是 `dsh:tool-body-admitted`）。要求特定 policy 或人类确认的 Action 必须通过宿主原生配置与 mapping 提供相应 evidence；Ordarium 只验证、持久化和检测冲突，不实现审批策略，也不从字符串 source 猜测 kind。
 
 Operations 使用独立的 `OperatorAuthorization` 边界，不把普通 Action authorization 复用成 operator 权限。模型或普通 tool input 不能自带一个 `kind=human-approval` 或 `operator=true` 来取得权限；证据只能由受信宿主 adapter 注入。
 
@@ -224,7 +226,7 @@ interface LedgerCapabilities {
 - 所有实现都必须满足同一个 semantic CAS 端口；否则不属于 OperationLedger。
 - `read-only` 可以使用 volatile ledger；`unmanaged` 只有在调用者显式 opt out 时可以使用，并且不获得 restart guarantee。
 - `guarded`、`idempotent`、`reconcilable` 要求 `crash-durable + liveLease + semanticHistory`，且 coordination 必须覆盖安装时声明的部署拓扑。
-- 默认 DSH 拓扑声明 `local-multi-process`，因此使用 SQLite reference ledger；高级 single-process 部署可以注入经过 conformance 的 exclusive durable ledger。
+- 默认嵌入式部署声明 `local-multi-process` 拓扑，因此使用 SQLite reference ledger；高级 single-process 部署可以注入经过 conformance 的 exclusive durable ledger。
 - capability 不足在 operation create 与 Provider dispatch 前返回 `LEDGER_CAPABILITY_REQUIRED`；SQLite/custom ledger 打开失败不得自动 fallback 到 MemoryLedger。
 
 这条 gate 允许测试和纯读取路径保持真正轻量，同时避免用“无数据库”换取一个表面更小、实际失去崩溃语义的 managed product。
@@ -242,12 +244,12 @@ interface LedgerCapabilities {
 
 LiveLease 另存 `operationId/owner/fencingToken/expiresAt/leaseRevision`。Semantic event 保存对应 revision 的 OperationRecord 快照，不把 LiveLease heartbeat 伪装成业务事件。分页固定按 `updatedAt DESC, operationId DESC`，cursor opaque；数据集无并发变化时不得遗漏或重复，并发变化时只承诺文档化的 live-cursor 语义。
 
-SQLite 文件固定 `application_id = ORDA`，operation `schemaVersion = 2`（自 G2 冻结以来未变）。库版本 `user_version` 只前向推进：G2 起 v2、G11 起 v3（state kind）、**ORD-BOOT-0 起 v4**（state 变更定序表）；历史 v1/v2/v3 库只能在 `@ordarium/ledger-sqlite` 边界事务性前向迁移到当前版本，迁移失败回滚并保持旧库完整。迁移后 core、Runtime、Operations 与 DSH 只看到当前版本的 record（operation 始终 `schemaVersion = 2`），不接受 `v1 | v2` union。打开其他应用数据库、未来版本数据库、半迁移或结构损坏 record 必须失败关闭。
+SQLite 文件固定 `application_id = ORDA`，operation `schemaVersion = 2`（自 G2 冻结以来未变）。库版本 `user_version` 只前向推进：G2 起 v2、G11 起 v3（state kind）、**ORD-BOOT-0 起 v4**（state 变更定序表）；历史 v1/v2/v3 库只能在 `@ordarium/ledger-sqlite` 边界事务性前向迁移到当前版本，迁移失败回滚并保持旧库完整。迁移后 core、Runtime、Operations 与宿主适配只看到当前版本的 record（operation 始终 `schemaVersion = 2`），不接受 `v1 | v2` union。打开其他应用数据库、未来版本数据库、半迁移或结构损坏 record 必须失败关闭。
 
 Ledger 不持久化：
 
 - 原始输入和业务 key；
-- DSH Credentials 或环境变量；
+- 宿主 Credentials 或环境变量；
 - 任意异常 stack/raw message；
 - Provider request/response 的未筛选副本。
 
@@ -255,30 +257,30 @@ Action output 与 receipt 本来就是工具可见或审计数据，因此会被
 
 Runtime 默认拒绝持久化超过 1 MiB 的单个 output 或 receipt，可通过 `maxPersistedJsonBytes` 下调或显式上调。副作用已经 dispatch 后才发现结果超限时，operation 必须进入 `uncertain`；不得丢弃结果限制后伪装成普通失败。
 
-## 8. DSH 与其他宿主
+## 8. 宿主映射（通用）
 
-DSH adapter 保留原生 pipeline 权威：
+宿主映射的唯一要求是：宿主保留原生 pipeline 权威，Ordarium 只负责中间那段不可绕过的副作用边界。
 
 ```text
-DSH schema/admission/guards
+宿主 schema/admission/guards
 → Ordarium identity + classified authorization evidence
 → durable claim/dispatched
 → Action body
 → Ordarium terminal/recovery state
-→ DSH output validation/render/result event
+→ 宿主 output validation/render/result event
 ```
 
-Ordarium 不注册自己的 Agent Loop，也不绕过 `tools/execute` wrapper。其他宿主只要能提供稳定 `source/scope/callId`、AbortSignal、分类后的 authorization evidence 和 ToolDefinition 映射，就可以复用 `@ordarium/core`。
+Ordarium 不注册自己的 Agent Loop，也不绕过宿主的工具执行包装。任何宿主只要能提供稳定 `source/scope/callId`、AbortSignal、分类后的 authorization evidence 和一个工具定义映射，就可以复用 `@ordarium/core`；现成叶包是 `@ordarium/host-mcp`（MCP）与 `@ordarium/dsh`（legacy）。
 
 宿主适配以 `@ordarium/host-kit` 为一等入口（G18）：接入时以 `assertHostContract(HOST_CONTRACT_VERSION)` 做 exact-match 版本握手，不匹配即 `HOST_CONTRACT_MISMATCH` fail-closed——不设多版本容忍。`HOST_CONTRACT_VERSION` 仅在宿主可见合同语义变化（port 形状/语义、宿主可见错误族承诺、宿主侧构造面默认值）时 bump，每次 bump 在本节与 docs/18 记录修订。
 
-DSH tool arguments 必须是 object JSON Schema，因此 `asDshTool()` 会拒绝 primitive input schema；core 本身仍允许 primitive Action，供非 DSH 宿主或内部组合使用。
+**legacy 注**：DSH 适配要求 tool arguments 是 object JSON Schema，因此 `asDshTool()` 拒绝 primitive input schema。core 本身允许 primitive Action，供其他宿主或内部组合使用。
 
 Subagent 是否需要 Ordarium 取决于副作用路径，而不是“是否叫 subagent”：同进程或远程 subagent 只要最终可能重投同一副作用 Action，就应传播 root identity，并在副作用边界使用 Ordarium；纯推理 subagent 不需要。
 
 ## 9. Runtime 与 HMR 生命周期
 
-DSH/Cordis 拥有 HMR 触发与插件生命周期；Ordarium 只定义自己的安全响应。Runtime 生命周期只有一条生产路径：
+宿主拥有 HMR 触发与插件生命周期（DSH 侧为 Cordis）；Ordarium 只定义自己的安全响应。Runtime 生命周期只有一条生产路径：
 
 ```mermaid
 stateDiagram-v2
@@ -320,7 +322,8 @@ stateDiagram-v2
 
 前三者只读；`reconcileOnly` 复用正常 Runtime 的同一个 RecoveryEvidenceEvaluator，但 mode 永久禁止 `execute()`，即使 Provider 返回 `absent + retrySafe` 也保持 `uncertain`。首发没有 `forceRetry`、raw SQL、开放式 `forceTransition` 或 manual attestation。
 
-Operations 默认不注册为模型工具。DSH 侧的受信注册点是**官方插件壳**（G9：`createOrdariumPlugin` 的 `operations.authorization` 注入，构造期校验）；工具只见 model 视图，operator 审计全文走 `plugin.ops`（进程内 API，宿主命令消费）。它使用 core 的同一 sanitized projector，不能直接读 SQLite、复制 record DTO 或自行解释状态。
+Operations 默认不注册为模型工具。**受信注册点在宿主侧**：宿主把自己的命令/权限体系映射成 `OperatorAuthorization` 注入（MCP 叶包的做法是 `operations: { authorization }`）。工具只见 model 视图，operator 审计全文只经宿主的进程内通道；一律使用 core 的同一 sanitized projector，不得直接读 SQLite、复制 record DTO 或自行解释状态。
+> **legacy 注**：DSH 适配的等价注册点是官方插件壳（G9：`createOrdariumPlugin` 的 `operations.authorization` 注入，构造期校验；审计全文走 `plugin.ops`），随该包冻结。
 
 ## 11. 管理型 state kind（G11）
 

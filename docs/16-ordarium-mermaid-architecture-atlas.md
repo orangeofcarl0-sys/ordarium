@@ -1,7 +1,9 @@
 # Ordarium Mermaid 完整架构图谱
 
 > Atlas revision：`ORDARIUM-ATLAS-3`  
-> 状态：`12–15` 的 Mermaid-first 视觉投影。`ATLAS-3` 同步 `delta-ARCH-001`：产品定位为多 agent harness 公共基石，第二宿主（MCP）与共账拓扑进入发布门。产品边界仍以 `12-ordarium-product-baseline.md` 为准，运行语义以 `13-ordarium-action-contract.md` 为准，当前实现快照以 `14-ordarium-implementation-plan.md` 为准，逐框解释以 `15-ordarium-complete-architecture.md` 为准，阶段目标与验收以 `17-ordarium-goals-and-acceptance.md` 为准。本文不另造第二套运行合同，而是把这些合同完整投影为可追溯图谱。
+> 状态：`12–15` 的 Mermaid-first 视觉投影。`ATLAS-3` 同步 `delta-ARCH-001`：产品定位为多 agent harness 公共基石，第二宿主（MCP）与共账拓扑进入发布门。产品边界仍以 `12-ordarium-product-baseline.md` 为准，运行语义以 `13-ordarium-action-contract.md` 为准，当前实现快照以 `14-ordarium-implementation-plan.md` 为准，逐框解释以 `15-ordarium-complete-architecture.md` 为准，阶段目标与验收以 `17-ordarium-goals-and-acceptance.md` 为准，发布事实以 `19-release-history.md` 为准。本文不另造第二套运行合同，而是把这些合同完整投影为可追溯图谱。
+>
+> **2026-09-11 定位更新（现行口径）**：接入路径为 host-neutral —— `@ordarium/core` + `HostInvocationPort`，宿主叶包现役 `@ordarium/host-mcp` / `@ordarium/host-kit`；**`@ordarium/dsh` 已冻结为 legacy**（`COMPAT-DSH-002`）。本图谱中的 DSH 节点（部署 subgraph、`@ordarium/dsh` 包节点、DSH Home 路径、DSH fixtures）是该适配交付时点的**历史实验室投影**，保留以存史并作为"宿主边界"的实例；现役宿主路径以 `@ordarium/host-mcp` 与自建宿主为准。
 
 ## 0. 图谱读法与完整性边界
 
@@ -27,7 +29,7 @@ flowchart LR
 
 ## 1. 产品结论如何推出
 
-### 1.1 从 DSH 已有职责推导 Ordarium 的窄边界
+### 1.1 从一个典型宿主已有职责推导 Ordarium 的窄边界（原以 DSH 为例）
 
 ```mermaid
 flowchart TD
@@ -78,7 +80,7 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    USER["最终用户 / Agent"] --> HOST["DSH 或类 DSH Tool Host"]
+    USER["最终用户 / Agent"] --> HOST["任意 Tool Host<br/>自建 / MCP / DSH（legacy）"]
 
     subgraph HOST_DOMAIN["宿主信任域与控制面"]
         LOOP["Agent Loop / Tool Pipeline"]
@@ -188,11 +190,11 @@ flowchart TB
 
                 subgraph DEV_SURFACE["开发者与宿主适配表面"]
                     direction LR
-                    DSH_PACKAGE["@ordarium/dsh<br/>精选 author façade / installOrdarium"]
-                    DSH_ADVANCED["@ordarium/dsh/advanced<br/>per-action / lifecycle / Ops binding"]
+                    DSH_PACKAGE["@ordarium/dsh<br/>[legacy·已冻结] 最初的宿主适配 façade"]
+                    DSH_ADVANCED["@ordarium/dsh/advanced<br/>[legacy] per-action / lifecycle / Ops binding"]
                     DSL["defineAction / effects / schema / defineSchema"]
                     BINDING["install golden path / advanced binding"]
-                    DSH_ADAPTER["DSH Host Adapter<br/>ToolDefinition ↔ HostInvocation"]
+                    DSH_ADAPTER["DSH Host Adapter<br/>[legacy] ToolDefinition ↔ HostInvocation"]
                     HOST_PORT["HostInvocationPort<br/>identity + classified authorization<br/>principal + signal + input"]
                     OPS_PORT["[发布门] OperationsPort<br/>inspect / list / history / reconcileOnly"]
                 end
@@ -227,8 +229,8 @@ flowchart TB
             end
         end
 
-        SQLITE_DB["$DSH_HOME/ordarium/operations.sqlite<br/>次选 ~/.dsh/ordarium/operations.sqlite<br/>semantic current/events + live lease"]
-        OTHER_LOCAL_PROCESS["[发布门] 可选第二本机 DSH / Ordarium 进程<br/>通过 transaction CAS 竞争"]
+        SQLITE_DB["宿主选择的本地 SQLite 路径<br/>（DSH 适配默认 $DSH_HOME/ordarium/operations.sqlite）<br/>semantic current/events + live lease + state 变更定序"]
+        OTHER_LOCAL_PROCESS["[已交付] 可选第二本机 Ordarium 进程 / 宿主<br/>通过 transaction CAS 竞争"]
         OS_PERMISSIONS["OS process / file permissions<br/>当前实际 tenant 隔离边界"]
     end
 
@@ -248,7 +250,7 @@ flowchart TB
         direction LR
         TESTING_PACKAGE["@ordarium/testing"]
         CRASH_TESTS["Durable checkpoint crash injection<br/>manual clock / fixed identity"]
-        DSH_FIXTURES["[发布门] real DSH fixtures<br/>replay / parallel / restart / HMR drain"]
+        DSH_FIXTURES["[已交付·legacy 适配] real DSH fixtures<br/>replay / parallel / restart / HMR drain"]
         PROVIDER_TESTS["[发布门] Provider conformance<br/>lost response / TTL / absence / cancel / fence"]
         LEDGER_TESTS["[发布门] dual-process / corruption / disk-full<br/>migration / backup / clock-stall tests"]
     end

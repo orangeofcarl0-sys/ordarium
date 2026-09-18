@@ -6,14 +6,14 @@ Ordarium 的文档分三层：**开发者指南**（[`dev/`](dev/README.md)，�
 
 ## 开发者文档（从 [`dev/`](dev/README.md) 进入）
 
-十一篇按角色组织的指南：快速开始、核心概念、effect profiles、**错误码表**（案头参考）、授权、ledger 选择、运维面、宿主（DSH/MCP/自建）、测试套件、生命周期与恢复、**管理型 state 与变更订阅**。写插件、选 profile、查报错、做运维、观测 state 都从这里走，不需要先读 12–19。
+十一篇按角色组织的指南：快速开始、核心概念、effect profiles、**错误码表**（案头参考）、授权、ledger 选择、运维面、宿主（自建/MCP，含 legacy 的 DSH 适配）、测试套件、生命周期与恢复、**管理型 state 与变更订阅**。写 Action、选 profile、查报错、做运维、观测 state 都从这里走，不需要先读 12–19。
 
 ## 维护与审计合同（权威）
 
 | 文档 | 作用 | 地位 |
 |---|---|---|
 | [`12-ordarium-product-baseline.md`](12-ordarium-product-baseline.md) | 产品生态位、职责边界、包布局（内核包 + 宿主适配叶包）与非目标 | **当前产品基线** |
-| [`13-ordarium-action-contract.md`](13-ordarium-action-contract.md) | Action、identity、授权、状态、恢复、管理型 state 与变更订阅、DSH/MCP 映射合同 | **当前运行合同** |
+| [`13-ordarium-action-contract.md`](13-ordarium-action-contract.md) | Action、identity、授权、状态、恢复、管理型 state 与变更订阅、宿主映射合同 | **当前运行合同** |
 | [`14-ordarium-implementation-plan.md`](14-ordarium-implementation-plan.md) | 已实现能力、验证门、Palimpsest 复兴方向 | 当前工程基线 |
 | [`15-ordarium-complete-architecture.md`](15-ordarium-complete-architecture.md) | 产品形态、权威分层、完整组件关系与运维闭环 | **当前完整架构** |
 | [`16-ordarium-mermaid-architecture-atlas.md`](16-ordarium-mermaid-architecture-atlas.md) | 全部视角的 Mermaid 投影 | 当前视觉架构索引 |
@@ -41,7 +41,7 @@ Ordarium 的文档分三层：**开发者指南**（[`dev/`](dev/README.md)，�
 
 ```text
 pnpm check / test            全量构建 + 单元/核心测试
-pnpm test:integration        SQLite reopen/migration、双进程、DSH/MCP 生命周期
+pnpm test:integration        SQLite reopen/migration、双进程、宿主生命周期
 pnpm test:conformance        ledger/Provider/宿主可移植 conformance
 pnpm verify:architecture     依赖图、public API 快照、冻结 union、SQLite 基线、兼容登记
 pnpm verify:docs             文档链接、代码围栏、README 宣称审计
