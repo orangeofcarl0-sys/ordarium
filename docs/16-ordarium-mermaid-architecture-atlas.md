@@ -8,7 +8,7 @@
 ```mermaid
 flowchart LR
     I["[已实现]<br/>当前代码已有主干"]
-    R["[发布门]<br/>首发前必须补齐"]
+    R["[发布门]<br/>首发门条目：已于 1.0.0（2026-08-17）全部补齐"]
     F["[未来]<br/>只保留显式接口"]
     N["[非目标]<br/>不进入 Ordarium"]
 
@@ -219,7 +219,7 @@ flowchart TB
                     direction LR
                     LEDGER_PORT["OperationLedgerPort<br/>capabilities / semantic CAS / live lease / pages"]
                     LEDGER_GATE{"Capability covers<br/>profile + topology?"}
-                    SQLITE_PACKAGE["@ordarium/ledger-sqlite<br/>WAL / FULL / schema v2 / migration / backup"]
+                    SQLITE_PACKAGE["@ordarium/ledger-sqlite<br/>WAL / FULL / schema v4 / migration / backup<br/>state 修订链 + 变更定序表"]
                     MEMORY_LEDGER["MemoryLedger<br/>volatile：read-only / test / explicit unmanaged"]
                     CUSTOM_LEDGER["Conformant custom/host ledger<br/>advanced injection"]
                     PERSISTENCE_FILTER["只持久化 metadata / digests / control state<br/>validated output / receipt / SafeError"]
@@ -486,8 +486,8 @@ flowchart LR
     SQLITE --> DSH_PIPE["原生 DSH Tool Pipeline"]
     MEMORY --> DSH_PIPE
 
-    CURRENT_API["[当前缺口] root export * + SqliteLedger<br/>create/register 作为 README 路径"] -.-> SIMPLE
-    CURRENT_CONTENT["[当前缺口] adapter 私有类型只建模 text block"] -.-> CONTENT["[发布门] 以 DSH 正式公开类型支持 ContentBlock"]
+    CURRENT_API["[历史缺口·已闭合 G1] root export * + SqliteLedger<br/>create/register 作为 README 路径"] -.-> SIMPLE
+    CURRENT_CONTENT["[历史缺口·已闭合 G5] adapter 私有类型只建模 text block"] -.-> CONTENT["[发布门·已交付] 以 DSH 正式公开类型支持 ContentBlock"]
     DSH_PIPE -.-> CONTENT
 ```
 
@@ -569,7 +569,7 @@ flowchart TD
 
     RAWKEY["raw logical key"] -.->|"只在内存计算"| KEYDIGEST
     CREDENTIAL["credential"] -.->|"禁止进入 key / digest / ledger"| STOP
-    CURRENT_RANDOM["[当前缺口] direct core 缺 identity 时生成 random UUID"] -.->|"managed Action 必须移除此逃生路径"| REQUIRED
+    CURRENT_RANDOM["[历史缺口·已闭合 G1] direct core 缺 identity 时生成 random UUID"] -.->|"managed Action 已移除此逃生路径（IDENTITY_REQUIRED）"| REQUIRED
 ```
 
 ### 4.3 授权证据的不可覆盖性
@@ -1002,7 +1002,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-    CURRENT["[当前缺口] installOrdarium.dispose<br/>unregister 后立即 close"] --> RISK["in-flight Action 可能失去持久化边界"]
+    CURRENT["[历史缺口·已闭合 G3] installOrdarium.dispose<br/>unregister 后立即 close"] --> RISK["in-flight Action 可能失去持久化边界"]
     RISK --> TARGET["[发布门] quiesce → unregister → bounded drain → abort remaining<br/>→ persist/handoff → revoke late writes → close"]
     SAME["同 name + version reload"] --> DIGEST["[发布门] schema/effect metadata diagnostic digest"]
     DIGEST --> DRIFT{"发现 contract drift？"}
@@ -1028,12 +1028,16 @@ flowchart LR
     LEDGER -.->|"不能当可随意清空的性能缓存"| EVICT["普通 cache clear / TTL eviction"]
 ```
 
-### 8.1 当前 v1 到公开目标 v2 的唯一 durable 模型
+### 8.1 durable 模型的前向迁移链（私有 v1 → 当前 v4）
+
+> 本节图在 G1 冻结期只画到 v2；后续 v3（G11 管理型 state）与 v4（ORD-BOOT-0 变更定序表）以同一纪律追加，形如下链。历史决议（"core 只接收 canonical record"）未变。
 
 ```mermaid
 flowchart LR
-    V1["[当前 private v1]<br/>operations + events<br/>revision + claim.expiresAt"] -->|"SQLite boundary<br/>one forward transaction"| V2["[公开目标 v2]<br/>semantic current + semantic events + LiveLease"]
-    V2 --> CORE["core / Runtime / Operations / DSH<br/>只接收 canonical schemaVersion 2"]
+    V1["[历史 private v1]<br/>operations + events<br/>revision + claim.expiresAt"] -->|"SQLite boundary<br/>one forward transaction"| V2["[v2 · G2]<br/>semantic current + semantic events + LiveLease"]
+    V2 -->|"v2→v3 纯增表（G11）"| V3["[v3 · G11]<br/>+ state 修订链 & refs 反查"]
+    V3 -->|"v3→v4 增表 + 定序回填（ORD-BOOT-0）"| V4["[v4 · ORD-BOOT-0]<br/>+ state 变更定序表"]
+    V4 --> CORE["core / Runtime / Operations / DSH<br/>只接收 canonical record（operation schemaVersion 2）"]
     UNKNOWN["foreign application_id<br/>higher user_version / corrupt / half-migrated"] --> FAIL["fail closed"]
     UNKNOWN -.->|"禁止进入"| CORE
     CUSTOM["non-SQLite conformant ledger"] -->|"同一 codec 与等价语义"| CORE
@@ -1220,7 +1224,7 @@ flowchart TD
     MODEL["默认模型视图"] --> REDACT["省略 reason / actor / lineage / full result / receipt"]
     REDACT --> VIEW
     FORCE["forceRetry"] -.->|"不属于公共 Operations Port"| OPS
-    CURRENT_LIST["[当前缺口] MemoryLedger 与 SQLiteLedger 默认 list limit 不一致"] -.->|"发布前统一 cursor contract"| PAGE
+    CURRENT_LIST["[历史缺口·已闭合 G2] MemoryLedger 与 SQLiteLedger 默认 list limit 不一致"] -.->|"cursor contract 已统一（默认 100）"| PAGE
     HUMAN["[未来] manual resolution<br/>strong authorization + actor/source/evidenceRef<br/>typed outcome，且不得重试 Provider"] -.-> TERMINAL
 ```
 
@@ -1237,7 +1241,7 @@ flowchart TD
     ARCHIVE --> TOMBSTONE["保留不可重用 identity tombstone"]
     TOMBSTONE --> EXPIRED["result 已清除时返回 RESULT_EXPIRED<br/>不得重新 execute"]
 
-    CURRENT_HB["[当前 v1] heartbeat 走通用 CAS<br/>每次追加完整 record snapshot"] --> WRITEAMP["长任务 write amplification"]
+    CURRENT_HB["[历史 v1·已闭合 G2] heartbeat 走通用 CAS<br/>每次追加完整 record snapshot"] --> WRITEAMP["长任务 write amplification"]
     HEARTBEAT["lease heartbeat"] --> TARGET["[发布门] 只更新轻量 liveness / current claim"]
     SEMANTIC["claim acquisition / fence / state transition"] --> HISTORY["进入 semantic revision history"]
     HEARTBEAT -.->|"禁止继续每次写完整 snapshot"| WRITEAMP
@@ -1253,14 +1257,14 @@ flowchart TD
 
     OPEN["open selected ledger"] --> CAP{"LedgerCapabilities 足够？"}
     CAP -->|"否"| FAIL["LEDGER_CAPABILITY_REQUIRED<br/>fail closed；不 fallback 到 memory"]
-    CAP -->|"是且为 SQLite"| VERSION{"application_id = ORDA<br/>user_version = 2<br/>record schemaVersion = 2？"}
+    CAP -->|"是且为 SQLite"| VERSION{"application_id = ORDA<br/>user_version 已知且 <= 当前 v4<br/>record schemaVersion = 2？"}
     CAP -->|"是且为 custom"| CODEC["canonical OperationRecord v2 codec<br/>嵌套字段 + 长度 + 跨状态 invariants"]
-    VERSION -->|"v1"| MIGRATE["SQLite boundary 事务性前向迁移到 v2"] --> CODEC
-    VERSION -->|"v2"| CODEC
+    VERSION -->|"v1 / v2 / v3"| MIGRATE["SQLite boundary 事务性前向迁移到当前 v4"] --> CODEC
+    VERSION -->|"v4"| CODEC
     VERSION -->|"foreign / higher / corrupt"| FAIL
     CODEC -->|"有效"| RUN["允许 Runtime 使用"]
     CODEC -->|"损坏"| FAIL
-    CURRENT_CODEC["[当前缺口] decoder 只完整检查部分顶层字段"] -.-> CODEC
+    CURRENT_CODEC["[已交付] 单一 codec 覆盖全部嵌套字段/长度/跨状态不变量"] -.-> CODEC
     HISTORY -.->|"完整 revision snapshots 不是 reducer event sourcing<br/>也不是 tamper-evident log"| RUN
 ```
 
@@ -1325,11 +1329,13 @@ flowchart TD
     ERROR -->|"[发布门] infrastructure family"| INFRA["按 dispatch 边界判断<br/>同 identity recovery，禁止解析底层 message"]
 ```
 
-### 9.3 从当前代码到首发的依赖图
+### 9.3 从当前代码到首发的依赖图（历史投影：该首发门已于 1.0.0 通过）
+
+> **状态注记**：下图是 G1 冻结期的交付依赖图，"发布门"各节点均已交付；其后追加 G9/G11/G16/G18 与 ORD-BOOT-0/0.1（当前线 1.3.1，见 `19`）。
 
 ```mermaid
 flowchart LR
-    CURRENT["[已实现]<br/>四包 / 五 profiles / identity<br/>authorization / state machine<br/>CAS lease fence / recovery<br/>SQLite v1 / DSH 结构适配 / fault hooks"]
+    CURRENT["[G1 时点快照]<br/>四包 / 五 profiles / identity<br/>authorization / state machine<br/>CAS lease fence / recovery<br/>SQLite（当时 v1）/ DSH 结构适配 / fault hooks"]
 
     CONTRACT["[发布门] 合同硬化<br/>curated root + advanced subpath<br/>profile union / classified authorization / principal<br/>public errors/states + complete codec"]
     PLATFORM["[发布门] 平台与 ledger<br/>LedgerCapabilities gate<br/>v2 migration / live lease / backup / retention<br/>SQLite/DSH target Node >= 24.15；no fallback"]

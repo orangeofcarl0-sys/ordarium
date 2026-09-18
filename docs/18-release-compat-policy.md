@@ -1,7 +1,7 @@
 # 发布兼容政策与消费者核对单（Release Compatibility Policy & Consumer Checklist）
 
-> **地位**：宿主中立的**发布沟通纪律**，适用于 `@ordarium/*` 全部消费者。与 docs/12–17 冲突时以 12–17 为准；兼容层登记不在本文——那是 [`../evidence/compatibility-register.md`](../evidence/compatibility-register.md)（机器校验，有 owner 与移除条件），本文与其互补：登记表管"层"，本文管"话"。
-> **修订记录**：`RCP-1`＝初版（2026-08-29）；`RCP-2`＝登记表 `COMPAT-PAL-001` 关闭为已执行（2026-09-06，见修订流水）；`RCP-3`＝ALN-4 对齐账例行复核回执与诉求③补记落地（2026-09-06，见修订流水）。
+> **地位**：宿主中立的**发布沟通纪律**，适用于 `@ordarium/*` 全部消费者。与 docs/12–19 冲突时以 12–19 为准；兼容层登记不在本文——那是 [`../evidence/compatibility-register.md`](../evidence/compatibility-register.md)（机器校验，有 owner 与移除条件），本文与其互补：登记表管"层"，本文管"话"；**发了什么、什么时候**由 [`19-release-history.md`](19-release-history.md) 记录（事实台账，只追加）。
+> **修订记录**：`RCP-1`＝初版（2026-08-29）；`RCP-2`＝登记表 `COMPAT-PAL-001` 关闭为已执行（2026-09-06，见修订流水）；`RCP-3`＝ALN-4 对齐账例行复核回执与诉求③补记落地（2026-09-06，见修订流水）；`RCP-4`＝1.3.x 发布线（ORD-BOOT-0 变更订阅 / ORD-BOOT-0.1 边界加固）按 §1 五类清单披露，并新增 `19` 为发布事实台账（2026-09-11，见修订流水）。
 
 ## 1. 发布沟通纪律
 
@@ -49,3 +49,4 @@
 | 2026-08-29 | 初版（RCP-1）：发布沟通纪律五类清单、消费者核对单七项模板、与兼容层登记的分工、首消费者案例引用。 |
 | 2026-09-06 | RCP-2：Palimpsest 侧 ALN-4② 正式确认送达；`evidence/compatibility-register.md` `COMPAT-PAL-001` 关闭为**已执行（G18，2026-08-29 交付）**，缝位纪律（不预设 Palimpsest 字段/shim）延续；首宿主 conformance 案例协议成文于 [`research/palimpsest-aln4-2-confirmation-2026-09-06.md`](research/palimpsest-aln4-2-confirmation-2026-09-06.md)，姊妹仓按其升级协议接入登记。 |
 | 2026-09-06 | RCP-3：ALN-4 例行复核回执落盘（[`research/palimpsest-alignment-routine-review-2026-09-06.md`](research/palimpsest-alignment-routine-review-2026-09-06.md)，对应姊妹仓 07 号 r8/r9）——①r6 文书澄清落地：charter 05 "OPERATION_UNCERTAIN 接缝待焊"记载过时标注（原文保留）；②诉求③补记动作闭环：G11 spec §10 首消费者形状反馈（append-only 主体，冻结决议零改动）+ docs/17 §16.6 指针；③发布面复核一致（tag/六 tarball/notes 五类清单），兼容登记零新触发；④两仓账面差异仅两处口径/引用项（报告 §6），无实质冲突。 |
+| 2026-09-11 | RCP-4：1.3.x 发布线按本文 §1 五类清单披露并记入新台账 [`19-release-history.md`](19-release-history.md)——`ordarium-v1.3.0`（ORD-BOOT-0 变更订阅：②存储迁移 v3→v4、④新错误码 `INVALID_CURSOR`）；`ordarium-v1.3.1`（ORD-BOOT-0.1 边界加固：①②③④⑤均无，五类之外另披露"输入域收紧 + `INVALID_CURSOR` 触发域扩展"）。两次发布均零新兼容层（加法面 + patch，无 shim）；`HOST_CONTRACT_VERSION` 保持 `1`。 |

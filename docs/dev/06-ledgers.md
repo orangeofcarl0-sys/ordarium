@@ -9,7 +9,7 @@ SQLite 不是 core 的语义依赖——core 只认 `OperationLedger` 端口 + `
 | kind | 语义 | 保留 | 写门槛 |
 |---|---|---|---|
 | 证据型 operation（现状） | "世界被改变"（承诺） | 永久，verdict 永不丢 | 授权门控 + 内容寻址 |
-| 管理型 state（[11](11-state.md)） | "当前意图/计划" | append-only，修订链 | 身份 + 授权证据，revision CAS |
+| 管理型 state（[11](11-state.md)） | "当前意图/计划" | append-only，修订链 + **持久提交序观测位点**（`StateChangeFeed`） | 身份 + 授权证据，revision CAS |
 | 对话型 message | "发生过通信" | 尚未实现（需求拉动，Stage 2） | —— |
 
 管理型与证据型同受 `LEDGER_FULL` fail-closed 保护：淘汰只会作用于（未来的）对话型，永不挤爆审计账本。任何新 kind 若需要 revision/CAS 之外的新并发机制，就是另一个引擎，不进这扇门。
@@ -18,9 +18,10 @@ SQLite 不是 core 的语义依赖——core 只认 `OperationLedger` 端口 + `
 
 | | `SqliteLedger`（默认） | `MemoryLedger` |
 |---|---|---|
-| 能力 | crash-durable、local-multi-process、语义 CAS、活租约、历史 | volatile、single-isolate |
-| 合法用途 | managed 副作用的默认本地 authority | 测试、纯读取、显式 unmanaged |
-| 不承诺 | 网络文件系统、多主机共享、外部 Provider 的恰好一次 | 崩溃/重启恢复、跨进程 claim |
+| 能力 | crash-durable、local-multi-process、语义 CAS、活租约、语义历史、state 修订链 | volatile、single-isolate、语义 CAS、活租约、语义历史、state 修订链 |
+| 变更订阅 | `stateChangeFeed: true`（cursor 跨进程重启有效） | `stateChangeFeed: true`（cursor 仅进程内有效） |
+| 合法用途 | managed 副作用的默认本地 authority | 测试、纯读取、显式 unmanaged、进程内 state 观测 |
+| 不承诺 | 网络文件系统、多主机共享、外部 Provider 的恰好一次 | 崩溃/重启恢复、跨进程 claim、cursor 跨进程存活 |
 
 ## 能力门
 
@@ -44,10 +45,12 @@ const runtime = new OrdariumRuntime({ allowVolatileLedger: true });
 
 实现完整的 `OperationLedger`（能力声明、语义 CAS + fence 验证、原子 claim+lease、轻量续租、cursor 分页、v2 记录 codec）并通过 conformance 后即可替换。**不要**建立第二套记录/状态语义。
 
+state 与变更订阅是**加法能力**，不是 `OperationLedger` 的必需成员：想提供它们就实现 `changes()` 并声明 `LedgerCapabilities.stateChangeFeed: true`（`supportsStateChangeFeed` 是 fail-closed 入口，消费方用 `StateStore.changes` 时能力不足会得到 `LEDGER_CAPABILITY_REQUIRED`）。声明了就必须满足可移植 conformance 断言：有序观测、页大小不变性、`limit` 域 `1..1000`、`limit=0` 拒绝、超出全局高水位的 cursor 拒绝、当前高水位可续读。
+
 ## 运维注意
 
 - 无自动 GC：terminal operation 不自动删除——删除会重新打开重复副作用的窗口；
 - 备份活跃库需先 `PRAGMA wal_checkpoint(TRUNCATE)` 或关闭全部连接（CI 中验证）；
-- 打开旧 v1/v2 库会沿迁移链**自动事务性迁移**到当前库 schema（v3；失败回滚，库保持完整旧版）；
+- 打开旧 v1/v2/v3 库会沿迁移链**自动事务性迁移**到当前库 schema（**v4**；失败回滚，库保持完整旧版）；
 - 并发 open 撞写锁由构造器**内置有界退避**吸收：默认 5 次 × 100ms（最坏约 400ms 后抛 `LEDGER_BUSY`），仅对 BUSY 重试——corrupt/更新 schema 等错误照旧一次性 fail-closed；`openRetry: { attempts: 1 }` 可退回即失败语义；
 - 恢复旧备份可能丢失备份点之后的 operation 身份——恢复后先与 Provider 事实 reconcile 再恢复执行。

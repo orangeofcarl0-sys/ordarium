@@ -22,7 +22,8 @@
 | 运维闭环 | **`OrdariumOperations` 已交付**（core 内 `operations.ts`：inspect/list/history 只读 + reconcileOnly 查询处置；双视图同一 projector；`OperatorAuthorization` 独立权限 + `OPERATOR_AUTHORIZATION_REQUIRED`；recovery material 预验 fail closed，delta-G4-001，exit 见 `evidence/G4/exit-report.md`）；DSH 侧受权工具注册归 G5 |
 | DSH | 结构兼容 ToolDefinition、call/root/session identity、AbortSignal、output renderer、注册/dispose helper；`asDshTool` 消费 `HostInvocation` 端口类型；**结构化 ContentBlock**（自定义 renderer 不受 text-only 限制）、`providerPrincipalRef` 瞬态绑定、`recoveryMaterial` 会话绑定（delta-G5-001；真实 DSH 包 fixture 携至 G7） |
 | 第二宿主 | **`@ordarium/host-mcp` 已交付**：MCP stdio 协议子集服务器（零外部依赖）、identity/evidence/错误映射、ops 默认不注册（opt-in 受 OperatorAuthorization 保护）、停止走 G3 生命周期；verifier 叶包规则生效（运行时依赖仅 core+ledger-sqlite） |
-| 测试 | G1–G6 全量回归与平台 fixture（25 文件 131 测试）：迁移保真/回滚、心跳零语义写、终态-接管竞争、双进程真实竞争、分页双实现一致、infra 错误族、WAL 备份/旧备份重收敛、双宿主共账、**官方 MCP SDK client 往返**、生命周期/恢复/取消/时钟矩阵、Operations A01–A11、**Provider conformance A01–A12**（声明交叉校验 + 七类 fixture + 双模式 spy 断言）；**Docker Node 矩阵**（`pnpm verify:matrix`：24.15.0 下限 + 24.19 当前线，见 `evidence/G7/node-matrix-report.md`）；各 Goal exit 见 `evidence/G<goal>/exit-report.md` |
+| 测试 | **当前基线：35 文件 / 214 测试**（G6 时为 25 文件 131 测试）：迁移保真/回滚、心跳零语义写、终态-接管竞争、双进程真实竞争、分页双实现一致、infra 错误族、WAL 备份/旧备份重收敛、双宿主共账、**官方 MCP SDK client 往返**、生命周期/恢复/取消/时钟矩阵、Operations A01–A11、**Provider conformance A01–A12**（声明交叉校验 + 七类 fixture + 双模式 spy 断言）、**state kind 与变更订阅 SCF-A01–A10b / SCF-B01–B09**；**Docker Node 矩阵**（`pnpm verify:matrix`：24.15.0 下限 + 当前 24.x 线，见 `evidence/G7/node-matrix-report.md` 与 `evidence/ORD-BOOT-0.1/exit-report.md` §5）；各 Goal exit 见 `evidence/G<goal>/exit-report.md` |
+| 发布线 | **当前 1.3.1（六包）**：1.0.0（G0–G7 首发）→ 1.1.0（G11 state kind + G16 打开退避）→ 1.2.0（G18 host-kit）→ 1.3.0（ORD-BOOT-0 变更订阅，schema v4）→ 1.3.1（ORD-BOOT-0.1 边界加固）；逐版台账见 `19`，分发渠道为 GitHub tag + Release |
 
 旧实现中的 contracts/persistence/provider/agent-loop/runtime/harness/worker/runner-client/host/resource-authority 包、Rust crates 和 Worker fixtures 已删除。不是暂时禁用，而是产品职责撤销。
 
@@ -39,9 +40,13 @@ pnpm verify:architecture
 
 `pnpm verify:architecture`（G0 交付）机器校验包依赖图与禁止边、public API 快照、错误码/状态 union、SQLite schema 基线与 Compatibility Register；快照位于 `ordarium/snapshots/`，证据与决策单位于 `ordarium/evidence/`（G0 报告见 `evidence/G0/baseline-report.md`）。任何漂移必须先附 Architecture Delta Sheet，再以 `pnpm snapshots:update` 解释。
 
-当前实现是 private baseline，不是已经兑现的发布表面。产品与合同已经在 `12/13` 收敛出的 clean-break target 包括：精选 `@ordarium/dsh` 根入口、`@ordarium/dsh/advanced` subpath、判别式 EffectProfile、分类 authorization evidence、provider principal digest、LedgerCapabilities、semantic record/live lease 分离、schema v2、quiesce/drain 与最小 Operations。它们必须按 `17` 的 G1–G5 顺序原子切换，本文不能因为列出 target 就把它们计为已实现。
+**阶段口径（历史保留 + 当前结论）**：G1 之前本文的记录口径是"当前实现是 private baseline，不是已兑现的发布表面"，并列出按 `17` G1–G5 顺序原子切换的 clean-break target（精选 `@ordarium/dsh` 根入口、`/advanced` subpath、判别式 EffectProfile、分类 authorization evidence、provider principal digest、LedgerCapabilities、semantic record/live lease 分离、schema v2、quiesce/drain、最小 Operations）。
 
-## 3. 近期完善顺序
+该阶段**已全部关闭**：全部 target 已交付并发布（G1–G7 首发线 1.0.0；其后 G9/G11/G16/G18 与 ORD-BOOT-0/0.1 追加），当前发布线 **1.3.1**、六包、SQLite schema v4、`HOST_CONTRACT_VERSION = 1`——逐版台账见 `19`。本文已从"计划与差距"转为**当前工程基线快照**；任何"待实现"字样只描述尚未交付的休眠项（§3–4 与 `17` §16.8 的 G13–G15/G17）。
+
+## 3. 近期完善顺序（历史计划，已关闭）
+
+> **状态注记（2026-09-11）**：本节 A–D 是 G1 时代写下的"发布前完善顺序"清单，**已全部执行完毕并于 1.0.0 首发线关闭**（其后由 G9/G11/G16/G18 与 ORD-BOOT-0/0.1 追加扩展）。条目原文保留以存史；其中的"当前/待做"字样按此注记解释，不代表今天的状态。仍在休眠的候选能力见 `17` §16.8。
 
 ### A. 发布前合同硬化
 
@@ -97,7 +102,7 @@ pnpm verify:architecture
 
 第一个可发布版本必须满足：
 
-1. 一条 DSH 安装路径，不要求用户理解内部四包；
+1. 一条 DSH 安装路径，不要求用户理解内部包组装（内核四包 + 宿主适配叶包）；
 2. 示例 Action 在进程崩溃、SQLite reopen 和同 call replay 后不重复业务副作用；
 3. opaque Provider 的未知结果稳定停在 `uncertain`；
 4. 两进程竞争时只有一个 claim 能进入 dispatch，长任务不会因 lease 失效形成双执行；

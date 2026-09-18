@@ -509,7 +509,7 @@ erDiagram
 
 `ordarium_operations` 是当前语义权威快照；`ordarium_operation_events` 是每个 semantic revision 的完整快照日志；`ordarium_operation_leases` 是可覆盖的当前 liveness。Heartbeat 只更新 lease row，不增加 semantic revision/history，也不改变语义 `updatedAt`。History 提供审计与恢复轨迹，但不是要求 reducer 重放才能得到当前状态的 event-sourcing 系统。
 
-首个公开版本目标固定 `application_id=ORDA`、`user_version=2`、record `schemaVersion=2`。当前 private v1 由 SQLite 边界事务性前向迁移；core 只接受 v2。非 SQLite ledger 也必须输出同一个 canonical record codec 与等价 semantic/live-lease 行为，不得建立第二套 Operation 模型。
+库文件固定 `application_id=ORDA`，record `schemaVersion=2`（G2 冻结至今未变）。`user_version` 只前向推进：G2 起 v2、G11 起 v3（state 修订链 + refs 反查）、**ORD-BOOT-0 起 v4**（state 变更定序表）；历史 v1/v2/v3 库由 SQLite 边界事务性前向迁移到当前版本（失败回滚保旧库完整）。非 SQLite ledger 也必须输出同一个 canonical record codec 与等价 semantic/live-lease 行为，不得建立第二套 Operation 模型。
 
 ### 12.2 数据流与禁止项
 
@@ -646,7 +646,7 @@ sequenceDiagram
 - 改变 input/output schema、key 生成、effect profile、Provider idempotency/reconcile 语义时必须 bump version。
 - Ledger 比插件实例生命周期更长；dispose 不删除 operation。
 - 安全 dispose 顺序是 quiesce → unregister → 有界 drain → abort remaining → 持久化可达状态或 durable handoff → 撤销迟到写权限 → close ledger。硬进程退出可以跳过 drain，但随后必须依赖 durable recovery。
-- 当前 `installOrdarium().dispose()` 只是 unregister 后立即 close，尚未实现 in-flight drain；这是发布前生命周期缺口，而不是已完成能力。
+- `installOrdarium().dispose()` **已实现**冻结序：quiesce → unregister → 有界 drain → abort → durable handoff → close（G3 交付；`packages/dsh/src/install.ts` 注释即该序）。历史注记：G3 之前它确实只是 unregister 后立即 close，本条曾是发布前缺口。
 - HMR 后同一 call 的恢复由重新注册的相同 Action version 完成。
 - 发布前 conformance 应对 schema/effect metadata 生成诊断 digest，以发现意外漂移；该 digest 是检查工具，不替代版本责任。
 
@@ -743,12 +743,14 @@ flowchart LR
     R -.->|"接口验证后"| P
 ```
 
+> **状态注记（2026-09-11）**：下表是 G1 时代的层次划分，"发布前必需"整列已于 1.0.0 首发线交付，其后由 G9/G11/G16/G18 与 ORD-BOOT-0/0.1 追加（当前线 1.3.1，六包，schema v4）。逐版台账见 `19`；仍在休眠的候选见 `17` §16.8。
+
 | 层次 | 内容 | 决策 |
 |---|---|---|
-| 已实现内核 | 四包、五种 profile、identity、授权、CAS/lease/fencing、恢复、SQLite、DSH 结构适配、故障注入 | 保留并继续硬化 |
-| 发布前必需 | 精选 façade、HostInvocationPort 冻结、宿主 conformance harness、LedgerCapabilities gate、schema v2/live lease、双 Node 进程竞争、共账拓扑 fixture、公共错误/状态冻结、真实 DSH lifecycle/replay/parallel/restart、`@ordarium/host-mcp` 第二宿主、recovery material、inspect/reconcile-only、跨 agent 审计视图、Provider conformance、ledger 生命周期策略 | 属于完整产品闭环 |
-| 发布后扩展 | 更多宿主 Adapter、少量 Provider adapters、更完善的 operator UX | 由真实采用推动 |
-| 明确延后 | Palimpsest Adapter | 只保留 Host Port，不进入当前实现 |
+| 已实现内核（G1 口径） | 内核四包、五种 profile、identity、授权、CAS/lease/fencing、恢复、SQLite、DSH 结构适配、故障注入 | 保留并继续硬化 |
+| 发布前必需（**已全部交付**，2026-08-17 首发线） | 精选 façade、HostInvocationPort 冻结、宿主 conformance harness、LedgerCapabilities gate、schema v2/live lease、双 Node 进程竞争、共账拓扑 fixture、公共错误/状态冻结、真实 DSH lifecycle/replay/parallel/restart、`@ordarium/host-mcp` 第二宿主、recovery material、inspect/reconcile-only、跨 agent 审计视图、Provider conformance、ledger 生命周期策略 | 已闭合；后续追加见 `17` §16 与 `19` |
+| 发布后扩展（**已交付一部分**） | G9 官方插件壳与运维面、G11 管理型 state kind、G16 打开退避、G18 `@ordarium/host-kit`、ORD-BOOT-0/0.1 变更订阅；其余"更多宿主 Adapter、少量 Provider adapters、更完善的 operator UX" | 已交付部分见 `19`；其余由真实采用推动 |
+| 明确延后（**仍然延后**） | Palimpsest Adapter | 只保留 Host Port 与通用原语；适配面由姊妹仓的实验分支承载（ORD-BOOT-0.1 已冻结其可依赖的基础设施），内核永远不进入语义层 |
 | 明确不做 | Agent Loop、workflow/subagent scheduler、多 agent 编排、secret vault、sandbox、client、Cordis fork、Rust runner、远程 worker、默认 daemon | 不进入路线图 |
 
 ## 19. 必须长期保持的不变量
@@ -795,17 +797,17 @@ flowchart LR
 | Host Invocation Port | core 与任意宿主之间的最小边界 | identity、authorization、signal、原 input | `ActionRunOptions` 与 parsed input | managed effect 缺稳定 identity 必须 fail closed | ARCH-3 冻结为 core 一等端口；独立接口与 `IDENTITY_REQUIRED` 在 G1 切换 |
 | Effect Authority Runtime、Ordarium operation 权威 | 编排 identity、authorization、claim、dispatch、terminal/recovery | Action、input、HostInvocation | typed result 或 Ordarium error | 状态/证据不足时 fail closed 或 `uncertain` | 已实现主链 |
 | Canonical identity engine | 生成稳定摘要与 operation id，并检测冲突 | Action name/version、identity、parsed input、可选 key | key/input digest、operationId | 非 lossless JSON、空 key、digest 冲突时拒绝 | 已实现 |
-| Authorization gate | 在 managed dispatch 前消费并持久记录分类证据 | effect profile、host-admission/policy-decision/human-approval | authorized 或 denied record | 缺 decision 为 required；deny 为终态；矛盾 evidence 不覆盖首次决定 | 主链已实现；kind/conflict metadata 需硬化 |
-| Operation state machine | 约束所有持久状态转换 | 当前 record、事件结果 | 下一 revision | 非法/未知状态 fail closed | 已实现，public state 待冻结 |
-| Claim / lease / fencing | 为一个 operation 分配短期执行所有权 | record revision、owner、clock | claim、expiry、单调 fence、heartbeat | CAS 失败为 busy；lease 丢失会 abort | 已实现；真实双进程和时钟异常待补 |
-| Recovery decision engine | 只在 Provider 证据允许时 query 或 redispatch | dispatched/uncertain、Action capability、input | reconciled、same-key dispatch 或 uncertain | 查询异常、未知、无安全路径均保持 uncertain | 已实现 invocation recovery；reconcile-only 待实现 |
+| Authorization gate | 在 managed dispatch 前消费并持久记录分类证据 | effect profile、host-admission/policy-decision/human-approval | authorized 或 denied record | 缺 decision 为 required；deny 为终态；矛盾 evidence 不覆盖首次决定 | 已交付（G1/G2：三类 evidence kind + `AUTHORIZATION_CONFLICT`） |
+| Operation state machine | 约束所有持久状态转换 | 当前 record、事件结果 | 下一 revision | 非法/未知状态 fail closed | 已交付（public state union 自 G1 冻结并进入快照门） |
+| Claim / lease / fencing | 为一个 operation 分配短期执行所有权 | record revision、owner、clock | claim、expiry、单调 fence、heartbeat | CAS 失败为 busy；lease 丢失会 abort | 已交付（G2 真实双进程竞争 + G3 时钟/stall 矩阵） |
+| Recovery decision engine | 只在 Provider 证据允许时 query 或 redispatch | dispatched/uncertain、Action capability、input | reconciled、same-key dispatch 或 uncertain | 查询异常、未知、无安全路径均保持 uncertain | 已交付（G3 invocation recovery + G4 `runtime.reconcileOnly` 查询专用入口） |
 | Schema / size / secret-safe persistence checks | 阻止不合法或过大的持久数据成为成功事实 | parsed output、receipt、safe error | 可持久化 JSON | dispatch 后校验失败必须落入恢复/uncertain 路径 | 已实现；自动 redaction 明确不默认提供 |
-| Safe Action、Action Port | 封装 Provider-specific execute/reconcile/cancel/receipt | typed input、execution context | typed output/query outcome/safe receipt | execute 是唯一业务写路径；reconcile/key/receipt 必须 query-only 或纯函数 | 主链已实现；纯度由 conformance 证明 |
-| OperationLedger Port / capability gate | 提供能力声明、当前语义记录、semantic CAS、live lease 与 cursor history | OperationRecord、expected revision/fence、filter | record、CAS/lease result、history/list | managed profile 与拓扑能力不匹配时 dispatch 前拒绝 | 基础 port 已实现；capability/lease/page target 待切换 |
-| SQLite Ledger、shared local SQLite、durable ledger | 在本机提供 WAL/FULL、semantic CAS、独立 live lease、schema v2 migration/backup | ledger operations | durable records/events/liveness | busy/full/corrupt 必须按第 24 节处理；不得 fallback | v1 已实现；v2 与维护策略待实现 |
-| MemoryLedger | 提供 single-isolate volatile 测试、read-only 或 explicit unmanaged 嵌入 | ledger operations | in-memory records/history | 进程退出即丢失；managed capability gate 拒绝 | 已实现；能力声明待实现 |
-| Operations Port、inspect/list/history/reconcile-only | 让受权操作者观察和只查询恢复 operation | operationId、Action、匹配 input、operator authorization | sanitized view 或 reconciled/uncertain | 不暴露通用 force retry；缺恢复材料时只读 | 发布前目标，合同见第 21 节 |
-| Crash / Conformance Kit、`@ordarium/testing` | 证明崩溃窗口、identity 与 Provider 能力声明 | Action、Runtime、fault point、provider fixture | 可重复测试证据 | 不替代真实 DSH/Provider integration | checkpoint/clock 已实现；Provider conformance 待补 |
+| Safe Action、Action Port | 封装 Provider-specific execute/reconcile/cancel/receipt | typed input、execution context | typed output/query outcome/safe receipt | execute 是唯一业务写路径；reconcile/key/receipt 必须 query-only 或纯函数 | 已交付（G6 Provider conformance A01–A12 含双模式 spy 纯度断言） |
+| OperationLedger Port / capability gate | 提供能力声明、当前语义记录、semantic CAS、live lease 与 cursor history | OperationRecord、expected revision/fence、filter | record、CAS/lease result、history/list | managed profile 与拓扑能力不匹配时 dispatch 前拒绝 | 已交付（G2：`LedgerCapabilities` gate + 双实现 cursor 分页一致；ORD-BOOT-0 追加可选 `stateChangeFeed` 能力位） |
+| SQLite Ledger、shared local SQLite、durable ledger | 在本机提供 WAL/FULL、semantic CAS、独立 live lease、schema v2 migration/backup | ledger operations | durable records/events/liveness | busy/full/corrupt 必须按第 24 节处理；不得 fallback | 已交付（当前 schema **v4**：operation + state 修订链 + 变更定序表；前向迁移、backup/reopen、稳定 infra 错误族已闭环；无自动 GC 是冻结决定，不是缺口） |
+| MemoryLedger | 提供 single-isolate volatile 测试、read-only 或 explicit unmanaged 嵌入 | ledger operations | in-memory records/history | 进程退出即丢失；managed capability gate 拒绝 | 已交付（能力声明 `volatile`/`single-isolate` + `stateRevisions`/`stateChangeFeed`，与 SQLite 共享同一 conformance kit） |
+| Operations Port、inspect/list/history/reconcile-only | 让受权操作者观察和只查询恢复 operation | operationId、Action、匹配 input、operator authorization | sanitized view 或 reconciled/uncertain | 不暴露通用 force retry；缺恢复材料时只读 | 已交付（G4 合同见第 21 节 + G9 运维面 opt-in 工具） |
+| Crash / Conformance Kit、`@ordarium/testing` | 证明崩溃窗口、identity 与 Provider 能力声明 | Action、Runtime、fault point、provider fixture | 可重复测试证据 | 不替代真实 DSH/Provider integration | 已交付（checkpoint/clock + Provider conformance + 宿主 conformance + state/变更订阅场景） |
 
 ### 20.3 数据、部署与演进框
 
@@ -814,11 +816,11 @@ flowchart LR
 | `Action name + version`、Invocation、Operation、Attempt、External effect | 五个不同基数对象，防止把“调用次数”误当“业务效果次数” | operation 是 Ordarium 去重单位；external effect 仍由 Provider 证明 | 已定义 |
 | default/business logical key、key/input digest、operationId、same/conflict | identity 推导中间值 | rootCallId 不进入默认 key；input digest 不进入 operation id，而用于冲突检查 | 已实现 |
 | proposed…reconciled 状态框 | operation 生命周期 | `reconciled` 必须读取 outcome；`uncertain` 是待处置状态 | 已实现 |
-| read-only/guarded/idempotent/reconcilable/unmanaged | Provider 能力剖面，不是安全分数 | idempotency/query 的持续期与一致性必须满足第 22 节 | profile 已实现，能力证据待硬化 |
-| current operation / semantic event / live lease table | 当前语义快照、semantic revision 历史与独立 liveness | 当前 v1 仍把 heartbeat 写入完整快照；目标 v2 分离，历史不是 tamper-evident event sourcing | v1 已实现，v2 待迁移 |
+| read-only/guarded/idempotent/reconcilable/unmanaged | Provider 能力剖面，不是安全分数 | idempotency/query 的持续期与一致性必须满足第 22 节 | 已交付（G1 profile union + G6 capability 交叉校验矩阵） |
+| current operation / semantic event / live lease table | 当前语义快照、semantic revision 历史与独立 liveness | heartbeat 与语义快照已分离；历史不是 tamper-evident event sourcing | 已交付（G2 起 v2 分离；当前库 schema v4） |
 | Action 进程内存、raw args/credentials、blocked persistence | 短期敏感数据边界 | raw input/key/credential/stack 不进入 ledger | 已定义并实现主要限制 |
-| DSH Node process / local machine / default SQLite path / explicit volatile mode | 默认嵌入式部署与较弱可选路径 | managed 默认 SQLite；volatile 只限 read-only/test/explicit unmanaged；多 tenant 分库/权限隔离 | SQLite 默认已实现，capability gate 待实现 |
-| HMR Action v1 instances | reload 前后相同 version 的语义连续性 | 不兼容 schema/key/effect/recovery 必须 bump version | 作者合同已冻结，diagnostic 待补 |
+| DSH Node process / local machine / default SQLite path / explicit volatile mode | 默认嵌入式部署与较弱可选路径 | managed 默认 SQLite；volatile 只限 read-only/test/explicit unmanaged；多 tenant 分库/权限隔离 | 已交付（SQLite 默认 + `LedgerCapabilities` gate：managed 写在能力不足时 dispatch 前拒绝） |
+| HMR Action v1 instances | reload 前后相同 version 的语义连续性 | 不兼容 schema/key/effect/recovery 必须 bump version | 已交付（`contractFingerprint` 漂移诊断 + G3/G5 HMR lifecycle/replay/restart 矩阵） |
 | 现有内核→合同硬化→DSH/运维/conformance→发布→第二宿主→Palimpsest | 交付依赖图，不是运行时组件 | 虚线未来框不代表现有能力 | 路线已定义 |
 | future ledger / remote authority / manual attestation | 明确扩展缝 | 未给出实现前不得形成当前产品承诺 | 有边界、无当前实现 |
 
@@ -943,15 +945,15 @@ Operation record 是去重安全状态，不是可随意删除的日志。首个
 - 将来若需要压缩，只能先归档 history，并保留不可重用的 identity tombstone；若 result 被清除，同一 invocation 应返回 `RESULT_EXPIRED`，不能重新 execute；
 - retention horizon 必须不短于宿主 replay horizon。Provider durable idempotency 必须覆盖全部已承诺 redispatch horizon；finite window 则在 operation 创建时冻结绝对 `expiresAt`，并把该时点之后的 redispatch horizon 收敛为零，而不是伪装成 durable。
 
-当前 v1 heartbeat 每次通过通用 CAS 更新都会追加完整 record snapshot：默认 30 秒 lease 会约每 10 秒产生一次写入，长任务会造成明显 write amplification。目标 v2 要求 claim acquisition、fence 和语义状态进入 history，而 heartbeat renewal 只更新独立 LiveLease；不能用自动删除安全 operation 的方式掩盖该问题。
+**历史缺口（已闭合，G2）**：私有 v1 的 heartbeat 每次通过通用 CAS 更新都会追加完整 record snapshot，长任务造成明显 write amplification。G2 起的实现把 claim acquisition、fence 与语义状态写入 history，而 heartbeat renewal 只更新独立 LiveLease row（`semanticHistory` 与 `liveLease` 能力位分离，G2-A03 机器证明）。**自动删除安全 operation 仍然不做**——它的代价是重新打开重复副作用窗口。
 
 ### 24.2 Backup、restore 与 migration
 
 - 活跃 WAL 数据库不能只复制主 `.sqlite` 文件；必须使用 SQLite 一致性 backup/checkpoint 流程或在所有连接关闭后复制完整文件集。
 - 恢复旧备份会丢失备份之后的 operation identity，可能重新打开重复副作用窗口；恢复流程必须先与 Provider 业务事实 reconcile。
 - Ledger schema 只做前向 migration；更高 `user_version` 或未知 record schema fail closed，不做自动 downgrade。
-- 当前 schema v1 尚无通用 migration runner、backup API 或 tombstone；公开目标已经冻结为 user/record v2 与独立 lease table，这些是 ledger 成品化任务，不得由文档暗示为已实现。
-- 当前 SQLite decoder 只完整检查了部分顶层字段；发布前必须用单一 `OperationRecord` codec 校验 authorization、claim、resumeFrom、result/receipt、error、uncertainty、reconciliation、identity 长度以及跨字段状态不变量。未完成前不能把“任意损坏 record 都 fail closed”描述成已验证事实。
+- **迁移与 backup 已交付**：G2 交付通用前向 migration（v1→当前）与 WAL 一致性 backup/reopen 证明；G11 追加 v2→v3 纯增表、ORD-BOOT-0 追加 v3→v4 增表 + 定序回填（计数守恒断言）。**tombstone/自动 GC 仍是冻结的"不做"**（删除会重开重复副作用窗口），不是缺口。
+- **单一 codec 已交付**：G1 起 `decodeOperationRecord`/`decodeStateRecord` 是唯一校验路径，覆盖 authorization/claim/resumeFrom/result/receipt/error/uncertainty/reconciliation/identity 长度与跨字段不变量；损坏 record 一律 fail closed 为 `LEDGER_CORRUPT`（G1 的 `codec.test.ts` 与 G2 的 corrupt fixture 机器证明）。历史注记：上文两条曾描述 G1 之前的未完成状态。
 
 ### 24.3 失败矩阵
 
@@ -987,31 +989,41 @@ Lease 当前使用同一主机的 wall clock 与定时 heartbeat。系统时钟�
 | `OPERATION_CANCELLED` | dispatch 前取消，或 read-only 取消 | 可由新的显式意图重新调用 |
 | `OPERATION_UNCERTAIN` | 外部结果未知且拒绝盲重试 | inspect/reconcile-only/人工外部核查 |
 | `PERSISTED_VALUE_TOO_LARGE` | output/receipt 超过持久化上限 | dispatch 前可修正；dispatch 后必须按 uncertain 处理 |
+| `INPUT_TOO_LARGE` | Action input 超过 canonical JSON 上限 | 缩小输入；发生在任何持久化之前 |
+| `CONTRACT_DRIFT` | 同 name+version 的 contract metadata 漂移 | bump Action version，不得原地改义 |
+| `OPERATION_UNCERTAIN` 等终态族 | 见上表 | 见上表 |
+| `LEDGER_BUSY` / `LEDGER_FULL` / `LEDGER_CORRUPT` / `LEDGER_CLOSED` | 稳定基础设施错误族（G2） | 按 docs/dev/04 的分类：busy 可退避重试；full/corrupt/closed 不重试 |
+| `LEDGER_OPEN_FAILED` / `LEDGER_NEWER_SCHEMA` / `LEDGER_MIGRATION_FAILED` | 打开边界失败族（G2/G16） | 检查路径/版本；不自动 downgrade；迁移失败保持旧库完整 |
+| `STATE_REVISION_CONFLICT` / `STATE_REF_NOT_FOUND` | 管理型 state 的 CAS 冲突与悬空引用（G11） | 重读修订后以新 `expectedRevision` 重试 / 先落被引对象 |
+| `HOST_CONTRACT_MISMATCH` | 宿主适配声明的合同版本与内核不一致（G18，exact-match） | 对齐 `@ordarium/*` pins 后重跑宿主 conformance |
+| `INVALID_CURSOR` | 变更订阅 cursor 不是合法持久位置：畸形，或语法合法但超出本账本全局高水位（ORD-BOOT-0/0.1） | 用上一次成功读取返回的 cursor；绝不当作"从零开始"或"无新内容" |
 | `SIMULATED_PROCESS_CRASH` | 测试夹具故障 | 只允许测试环境使用，不作为产品错误 |
 
-SQLite I/O、corruption 与未来 migration 错误目前还没有冻结的 Ordarium error code。发布前必须把这些异常映射为稳定 infrastructure error family，避免 DSH 根据任意底层 message 判断是否重试。
+SQLite I/O、corruption 与 migration 异常**已全部映射**为上述稳定 infrastructure error family（G2 交付，G16 加固打开路径）：调用者按 code 分类，不得解析底层 message 判断是否重试。完整清单与调用者动作以 [`docs/dev/04-errors.md`](dev/04-errors.md) 为准。
 
 ## 26. 架构完整性判定
 
-| 审计维度 | 结论 | 仍需实现的证明 |
-|---|---|---|
-| 产品/生态边界 | 闭合 | 无 |
-| 宿主、Ordarium、Provider 三权分工 | 闭合 | DSH approval evidence 实际映射 |
-| 包、façade 与依赖方向 | 闭合 | 当前四包仍为 private 且 DSH 根入口过宽；需精选 exports、`/advanced`、manifest 与版本策略 |
-| Action/identity/version | 闭合 | managed identity-required、contract digest 诊断、真实 replay identity fixture |
-| 正常执行与状态机 | 闭合且已实现 | public state/error freeze |
-| Ledger capability、并发、lease、fencing | 合同闭合 | capability gate、v2 live lease、双子进程、clock/stall、Provider fence fixture |
-| 崩溃恢复 | invocation recovery 已闭合 | reconcile-only 实现与 recovery material resolver |
-| Provider 保证边界 | 合同现已闭合 | TTL/absence/cancel/fence conformance suite |
-| Secret、tenant 与 trust boundary | 合同现已闭合 | ops view 脱敏、tenant 数据库隔离与权限集成 |
-| Ledger 数据模型 | v2 target 已闭合，v1 为当前实现 | 完整 codec、v1→v2 migration、backup/retention、Node 24.15+ 矩阵 |
-| 运维闭环 | 合同现已闭合 | inspect/list/history/reconcile-only 成品化 |
-| HMR 与生命周期 | 合同现已闭合 | Runtime quiesce/drain API、真 DSH dispose/reload/restart fixture |
-| Subagent 与其他宿主 | 边界闭合 | HostInvocationPort 冻结、`host-mcp` 第二宿主、双宿主共账 fixture（14.1/14.2） |
-| Palimpsest | 有意保留接口，不构成当前缺口 | 当前不实现 |
-| 分布式/远程 Authority | 明确非目标，不构成当前缺口 | 有真实需求后重新立项 |
+> **状态注记（2026-09-11 复核）**：本表写于 G1 冻结期，"仍需实现的证明"整列当时尚未交付。第三列已按下述复核结果更新为**当前证据**；原始结论列保留存史。逐版台账见 `19`，验收映射见 `17` §16 与各 `evidence/<goal>/exit-report.md`。
 
-最终判定：**架构现在达到“所有运行时框都有职责、I/O、权威、失败和状态说明”的合同完整度；实现仍未达到发布完整度。** 未完成内容已全部落在明确发布门或未来扩展缝中，不再存在由某个无主框暗示出来的隐藏子系统。
+| 审计维度 | 结论（G1 口径，保留） | 当前证据（2026-09-11） |
+|---|---|---|
+| 产品/生态边界 | 闭合 | 无待办 |
+| 宿主、Ordarium、Provider 三权分工 | 闭合 | G5 DSH/MCP 映射 + G18 `runHostAdapterConformance` 四场景（姊妹仓首案例 PLMP-CONF-1）已交付 |
+| 包、façade 与依赖方向 | 闭合 | 已交付：精选 exports、`/advanced` subpath、`manifest`/`files`/`engines`；当前六包（内核四包 + 叶包 host-mcp/host-kit），架构门含叶包规则 |
+| Action/identity/version | 闭合 | 已交付：`IDENTITY_REQUIRED`、`CONTRACT_DRIFT`（contractFingerprint）、replay identity fixture |
+| 正常执行与状态机 | 闭合且已实现 | 已交付：public state/error union 自 G1 冻结并进入快照门 |
+| Ledger capability、并发、lease、fencing | 合同闭合 | 已交付：capability gate、lease 表分离、双 Node 进程竞争、clock/stall、Provider fence fixture |
+| 崩溃恢复 | invocation recovery 已闭合 | 已交付：`reconcileOnly` 查询入口 + recovery material resolver |
+| Provider 保证边界 | 合同现已闭合 | 已交付：G6 Provider conformance A01–A12（TTL/absence/cancel/fence/principal） |
+| Secret、tenant 与 trust boundary | 合同现已闭合 | 已交付：ops 脱敏视图、scope/tenant 边界、ledger 不持久化 raw input/key/credential |
+| Ledger 数据模型 | v2 target 已闭合 | 已交付并前向推进：单一 codec、v1→v2→v3→**v4** 迁移链、backup/reopen、Node 24.15+ 矩阵；"retention" 的自动 GC 为**明示不做** |
+| 运维闭环 | 合同现已闭合 | 已交付：G4 inspect/list/history/reconcile-only + G9 opt-in 运维面（OperatorAuthorization） |
+| HMR 与生命周期 | 合同现已闭合 | 已交付：Runtime quiesce/drain、DSH dispose 冻结序、HMR reload/restart fixture |
+| Subagent 与其他宿主 | 边界闭合 | 已交付：HostInvocationPort 冻结、`host-mcp` 第二宿主、双宿主共账 fixture、`host-kit` 版本握手 |
+| Palimpsest | 有意保留接口，不构成当前缺口 | 仍然不实现；通用原语（state/refs/变更订阅）已就绪，语义适配由姊妹仓实验分支承载 |
+| 分布式/远程 Authority | 明确非目标，不构成当前缺口 | 仍然非目标（有真实需求后重新立项） |
+
+**修订后的最终判定（2026-09-11）**：架构合同完整度保持不变；**实现完整度已达发布完整度**——首发门 1.0.0（2026-08-17）通过，其后 G9/G11/G16/G18 与 ORD-BOOT-0/0.1 以加法切片交付，当前线 1.3.1（六包 / schema v4 / 全门绿，见 `19` §1）。原始 G1 判定"实现仍未达到发布完整度"已由发布事实取代。
 
 ## 27. 最终架构结论
 

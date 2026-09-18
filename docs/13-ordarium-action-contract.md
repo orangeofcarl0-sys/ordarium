@@ -1,7 +1,9 @@
 # Ordarium Safe Action 合同
 
 > Contract revision：`ORDARIUM-ACTION-2`  
-> 状态：首个公开版本的目标运行合同。当前 private v1 实现与本合同的差距只记录在 `14`；G1/G2 允许 clean break 与一次性前向迁移，不保留双合同。
+> 状态：**已交付并发布的运行合同**（当前发布线 1.3.1，见 `19`）。历史注记：本合同的 G1/G2 冻结期口径是"目标合同 + private v1 差距记录在 `14`、允许 clean break 与一次性前向迁移"——该阶段已完成，差距项已全部关闭；本节保留原决议，不回溯改写。
+>
+> 变更面：§11 管理型 state 与 §11 增量观测（ORD-BOOT-0/0.1）为发布后追加条文；其余条款自 G1/G2 冻结以来语义未变。
 
 ## 1. 合同对象
 
@@ -240,7 +242,7 @@ interface LedgerCapabilities {
 
 LiveLease 另存 `operationId/owner/fencingToken/expiresAt/leaseRevision`。Semantic event 保存对应 revision 的 OperationRecord 快照，不把 LiveLease heartbeat 伪装成业务事件。分页固定按 `updatedAt DESC, operationId DESC`，cursor opaque；数据集无并发变化时不得遗漏或重复，并发变化时只承诺文档化的 live-cursor 语义。
 
-SQLite 文件固定 `application_id = ORDA`；首个公开版本的目标为 `user_version = 2`、operation `schemaVersion = 2`。当前 private v1 只能在 `@ordarium/ledger-sqlite` 边界事务性前向迁移一次；迁移后 core、Runtime、Operations 与 DSH 只看到 v2，不接受 `v1 | v2` union。打开其他应用数据库、未来版本数据库、半迁移或结构损坏 record 必须失败关闭。
+SQLite 文件固定 `application_id = ORDA`，operation `schemaVersion = 2`（自 G2 冻结以来未变）。库版本 `user_version` 只前向推进：G2 起 v2、G11 起 v3（state kind）、**ORD-BOOT-0 起 v4**（state 变更定序表）；历史 v1/v2/v3 库只能在 `@ordarium/ledger-sqlite` 边界事务性前向迁移到当前版本，迁移失败回滚并保持旧库完整。迁移后 core、Runtime、Operations 与 DSH 只看到当前版本的 record（operation 始终 `schemaVersion = 2`），不接受 `v1 | v2` union。打开其他应用数据库、未来版本数据库、半迁移或结构损坏 record 必须失败关闭。
 
 Ledger 不持久化：
 

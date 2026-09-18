@@ -1,7 +1,9 @@
 # Ordarium 阶段 Goal、架构一致性与验收合同
 
 > Goal revision：`ORDARIUM-GOALS-3`  
-> 状态：首个公开版本的执行基线。`GOALS-3` 按 `delta-ARCH-001` 把产品目标提升为“多 agent harness 公共基石”：HostInvocationPort 冻结、宿主 conformance harness、多 agent identity/共账合同进入 G1/G2/G4，真实第二宿主 `@ordarium/host-mcp` 进入 G5 发布门，G8 收窄为发布后扩展与 Palimpsest 缝。本文仍是阶段目标、实施顺序、进入/退出条件和验收证据的最高权威；`14-ordarium-implementation-plan.md` 继续记录当前实现快照，但其阶段顺序与发布门若和本文冲突，以本文为准。产品边界仍由 `12` 定义，运行语义由 `13` 定义，系统结构由 `15` 定义，完整视觉投影由 `16` 定义。
+> 状态：阶段目标、实施顺序、进入/退出条件与验收证据的最高权威。`GOALS-3` 按 `delta-ARCH-001` 把产品目标提升为“多 agent harness 公共基石”：HostInvocationPort 冻结、宿主 conformance harness、多 agent identity/共账合同进入 G1/G2/G4，真实第二宿主 `@ordarium/host-mcp` 进入 G5 发布门，G8 收窄为发布后扩展与 Palimpsest 缝。产品边界由 `12` 定义，运行语义由 `13` 定义，系统结构由 `15` 定义，视觉投影由 `16` 定义，**发布事实由 `19` 定义**。
+>
+> **阅读口径（2026-09-11 补注）**：§8–§15 的 G0–G7 各节是**各阶段的冻结计划与验收记录**。其中"当前 v1 / 目标 v2 / 发布前"等字样描述的是**该 Goal 执行时点的世界状态**，不是今天的状态——它们已被发布事实取代（首发门 1.0.0 于 2026-08-17 通过，当前线 1.3.1，见 `19`）。这些章节保留原文以存史；**当前状态一律以 §16 各追加节（G8–G18、ORD-BOOT-0/0.1）与 `19` 为准**。
 
 ## 1. 总目标与完成定义
 
@@ -218,16 +220,16 @@ flowchart LR
 
 ## 6. Compatibility Layer 政策
 
-### 6.1 默认决策：首发前不为内部旧形状保留兼容层
+### 6.1 默认决策：首发前不为内部旧形状保留兼容层（阶段已结束）
 
-当前四包仍是 private workspace，没有已经发布的公共兼容承诺。因此 G1–G6 期间：
+**历史决议（G1–G6 期间生效，保留存史）**：当时四包仍是 private workspace，没有已发布的公共兼容承诺，因此：
 
 - public API 需要调整时直接改成目标形状，并一次性更新仓库内调用者；
 - OperationRecord 改版时提供一个 ledger-boundary forward migration，但 core 只消费新形状；
 - 不保留 `legacyRuntime`、`runV1/runV2`、双写表、旧状态别名或“临时”自动 fallback；
 - 不因为当前测试依赖旧 API 就把旧 API 当生态合同；应更新测试去证明目标合同。
 
-发布后才按 semver 和支持矩阵承担外部兼容责任。
+**当前状态（2026-09-11）**：该阶段已随 1.0.0（2026-08-17）结束——六包已公开发布至 1.3.1，**此后按 semver 与支持矩阵承担外部兼容责任**（`18` 的五类清单 + `19` 的发布台账）。clean-break 期没有留下任何 legacy shim；发布后的每次变更都以加法切片 + Delta Sheet + 快照/文档同步执行（G9/G11/G16/G18、ORD-BOOT-0/0.1 为例）。
 
 ### 6.2 兼容逻辑只允许存在于边界
 
@@ -264,9 +266,11 @@ Host Adapter、OperationLedger implementation 和 Provider adapter 本身是长�
 
 ### 6.3 首发已预见的兼容事项
 
+> **机器登记以 [`../evidence/compatibility-register.md`](../evidence/compatibility-register.md) 为准**（`verify:architecture` 校验 ID 唯一与六列非空）。下表是 G1 冻结期的**预见清单**（保留存史）；各行的当前状态以登记表与 `19` 为准。
+
 | ID | 事项 | 决策 |
 |---|---|---|
-| `COMPAT-DB-001` | 当前 SQLite schema v1 到目标 schema | 在 ledger 包执行一次性 forward migration；core 不接收 v1 union |
+| `COMPAT-DB-001` | SQLite schema 演进到目标 schema | 在 ledger 包执行一次性 forward migration；core 不接收 v1 union（**登记表已滚动更新**：当前 canonical target = schema v4，v1/v2/v3 库均前向迁移） |
 | `COMPAT-DSH-001` | DSH 正式 public surface 与当前结构近似类型可能不同 | G5 以固定支持矩阵重写/收敛 adapter；不保留“猜测类型 + 正式类型”双入口 |
 | `COMPAT-API-001` | 当前 private `0.2.0` API 与首发 API 可能不同 | 首发前直接 clean break；当前版本号不构成外部兼容承诺 |
 | `COMPAT-API-002` | 当前 DSH 根入口宽重导出 core/SQLite，目标是精选 root + `/advanced` | G1 一次性切换 export map、README 与 consumer snapshot；不保留第二个 legacy root |
@@ -797,6 +801,8 @@ G16 触发条件"随时"满足，2026-08-29 会话决议解除休眠并实施完
 | 命题三 路径四步 | **已走两步**：①发布与首次消费兑现（1.1.0/1.2.0 发布、姊妹仓按 docs/18 核对单完成消费 bump 并于 r8 交付首宿主案例）；②判据①已闭合（2026-09-06 会话裁决）；真实恢复案例已公开成文（2026-09-07，判据②证据，两仓公开账面 + 可复现基建）——第 3 步"公开恢复案例"的事实面已具备 | ③ conformance 外部引用 → 公开恢复案例 → 第三方引用 | docs/18 发布纪律；姊妹仓 PLMP-ALN-1 升级协议 |
 
 休眠触发预测：判据①的实施预期同时唤醒 G14 与 G17（§16.8）——2026-08-29 复盘：telemetry 试点未触达 scope 面与 refs（PLMP-ALN-1 r3），两 Goal 仍未唤醒，预测保持。
+
+**2026-09-11 补记（发布线推进）**：发布线自 1.2.0 推进到 **1.3.1**（`ordarium-v1.3.0` 变更订阅原语 / `ordarium-v1.3.1` 边界加固，均为 minor/patch 加法，见 `19`）。这属于命题三①"发布与首次消费兑现"的持续事实，**不改变**上表任何判据的闭合状态：③（conformance 外部引用）与⑤（第二领域嵌入）仍为双边休眠、纯外部牵引；④ swarm 压测口径不变；G14/G17 仍未唤醒（ORD-BOOT-0 交付的是**通用原语**，不构成 G14 运维面或 G17 依赖图需求的触发）。
 
 ## 16.10 G18（G8 第 4 项激活）：versioned Host Adapter 叶包
 

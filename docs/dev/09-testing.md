@@ -2,6 +2,16 @@
 
 `@ordarium/testing` 提供确定性夹具：无网络、无真实凭据、手动时钟。
 
+## Ledger / state conformance（写自定义 ledger 时先跑这个）
+
+```ts
+import { runStateLedgerConformance } from "@ordarium/testing";
+
+await runStateLedgerConformance(myLedger);   // 违反即抛描述性 Error
+```
+
+框架无关（任何 test runner 都能驱动），覆盖：state 修订 CAS 链（创建/冲突/坐标不匹配）、append-only history 与 opaque cursor 分页、refs 反向索引、派生视图（`listStates` 的 namespace 过滤与分页），以及**声明 `stateChangeFeed: true` 时的变更订阅契约**——有序观测、页大小不变性、`limit` 域与 `limit=0` 拒绝、超出全局高水位的 cursor 拒绝。`MemoryLedger` 与 `SqliteLedger` 都跑同一套（`pnpm test:conformance`），你的自定义 ledger 也应当如此。
+
 ## HostAdapterHarness：不写宿主就能测全合同
 
 ```ts

@@ -1,8 +1,8 @@
 # Ordarium
 
-Ordarium 是**多 agent harness 的公共基石**：一个轻量、可嵌入、host-neutral 的 **Safe Action SDK + Effect Authority**。它不运行 Agent、不组装 Prompt、不调度或编排 agent，也不替代任何宿主 harness；它只包住真正会产生副作用的 Action，使一次调用具备稳定身份、分类授权证据、持久状态、并发所有权和诚实的崩溃恢复语义。DSH 是首个宿主；发布前以真实第二宿主（`@ordarium/host-mcp`）与宿主 conformance harness 机器证明内核中立，多个 agent/进程/宿主可共享同一本地 ledger（共账拓扑）。
+Ordarium 是**多 agent harness 的公共基石**：一个轻量、可嵌入、host-neutral 的 **Safe Action SDK + Effect Authority + revisioned durable state primitives**。它不运行 Agent、不组装 Prompt、不调度或编排 agent，也不替代任何宿主 harness；它包住真正会产生副作用的 Action，使一次调用具备稳定身份、分类授权证据、持久状态、并发所有权和诚实的崩溃恢复语义；它也在同一账本上提供宿主声明的**管理型 state**（`(namespace, key)` 修订链 + refs）与**跨主体的增量变更观测**（`StateChangeFeed`），但不解释这些 state 的含义。DSH 是首个宿主；宿主中立性以真实第二宿主（`@ordarium/host-mcp`）与可移植宿主 conformance harness 机器证明，多个 agent/进程/宿主可共享同一本地 ledger（共账拓扑）。
 
-> 当前发布线为 `1.1.0`（正式线，MIT；G0–G11 验收完成，见 `evidence/G7/release-candidate-report.md`、`evidence/G9/exit-report.md` 与 `evidence/G11/exit-report.md`）。**分发渠道为 GitHub**（DSH 插件生态惯例）：本仓库即包源，以 git tag 为版本锚（首个 `ordarium-v1.0.0`；`ordarium-v1.1.0` 随下一次分发执行）；公共 npm 发布推迟至 DSH 公开后。
+> 当前发布线为 **`1.3.1`**（正式线，MIT；六包）。**分发渠道为 GitHub**（DSH 插件生态惯例）：本仓库即包源，以 git tag + 同名 Release 为版本锚（`ordarium-v1.0.0` → `ordarium-v1.3.1` 均已发布）；公共 npm 发布未执行（1.0.0 时的尝试被账号 2FA 拒绝，零发布）。每版的档位、头条交付与消费者可见变化见 [`docs/19-release-history.md`](docs/19-release-history.md)。
 
 ## 为什么安装
 
@@ -63,14 +63,38 @@ const ordarium = installOrdarium(ctx, { actions: [createTicket] });
 
 Ordarium 不声称能让任意外部 API 获得“恰好一次”。只有 Provider 真正支持幂等键、可查询业务键或 fencing 时，端到端不重复才可证明；否则正确结果是 `uncertain`，不是伪造成功或失败。
 
+## 管理型 state 与变更订阅
+
+除证据型 operation 外，同一账本还承载**管理型 state**：宿主声明的 `(namespace, key)` 槽位 + 单调 `revision` + 内容摘要 `valueDigest` + 一等 `refs`（指向 operationId 或 `namespace/key@revision`，写入前做存在性校验）+ 写者 identity。仲裁是乐观 revision CAS 单原语（`expectedRevision: 0` 表示创建），无 lease/fence；内核只存不释——失效传播、晋升、级联撤销都留在宿主。
+
+需要"看到别的主体提交了什么"时用**变更订阅**（1.3.0 起）：
+
+```ts
+import { createStateStore } from "@ordarium/core";
+
+const store = createStateStore({ ledger });
+const page = await store.changes({ namespace: "alpha", limit: 100 }, cursor);
+// page.changes : StateRecord[]（按持久账本提交观测序升序）
+// page.cursor  : 不透明、全局、到达末尾仍返回的 resume 位点
+// page.hasMore : 是否还有已存在的匹配变更
+```
+
+- 顺序只承诺**账本提交观测序**，不代表因果、墙钟或业务优先级；
+- 交付语义是 `AtLeastOnceObservation + DurableCursor + IdempotentConsumerPossible`——不承诺分布式 exactly-once；正确持久化的 cursor 不会静默跳过已提交修订；
+- 显式 `limit` 域为 `1..1000`（默认页 100）；畸形 cursor，以及语法合法但位置**超出本账本高水位**的 cursor，都以 `INVALID_CURSOR` fail closed（绝不当作"从零开始"或"无新内容"）；
+- cursor 的持久性继承 ledger 的 durability 声明：SQLite 跨进程重启有效，`MemoryLedger` 仅进程内；
+- 已知局限（如实记录）：不做 cursor 与数据库的身份绑定，因此"来自另一库但数值合法"的 cursor 无法被探测。
+
+state 的含义（消息、收件箱、契约、承诺、订阅、配置、计数器）完全由宿主赋予——Ordarium 不知道也不需要知道。详见 [docs/dev/11](docs/dev/11-state.md)、[docs/13 §11](docs/13-ordarium-action-contract.md) 与 [docs/research/ORD-BOOT-0.1-state-change-feed-hardening-spec.md](docs/research/ORD-BOOT-0.1-state-change-feed-hardening-spec.md)。
+
 ## SQLite 是否必需
 
 **不绝对必需。** Core 只依赖 `OperationLedgerPort + LedgerCapabilities`，不把 SQLite 写进 Action 或 Operation 语义。
 
 | 选择 | 合法用途 | 不能承诺 |
 |---|---|---|
-| 默认 `@ordarium/ledger-sqlite` | 本机 crash-durable managed write、本机多进程协调、历史与恢复 | 网络文件系统或多主机共识 |
-| `MemoryLedger` | 单 isolate 测试、纯读取、显式 `unmanaged` | crash/restart recovery、跨进程 claim |
+| 默认 `@ordarium/ledger-sqlite` | 本机 crash-durable managed write、本机多进程协调、历史与恢复、state 修订链与变更订阅（cursor 跨重启有效） | 网络文件系统或多主机共识 |
+| `MemoryLedger` | 单 isolate 测试、纯读取、显式 `unmanaged`、进程内 state/变更订阅 | crash/restart recovery、跨进程 claim、cursor 跨进程存活 |
 | conformant custom/host ledger | 高级嵌入、宿主已有 durable store | 未通过 capability/codec/lease/history conformance 的 managed guarantee |
 
 Runtime 在创建 managed operation 前检查 durability、coordination、semantic CAS、live lease 与 history 能力。能力不足或 durable ledger 打开失败会返回 `LEDGER_CAPABILITY_REQUIRED`，Provider 不会被调用；系统绝不静默 fallback 到 MemoryLedger。
@@ -83,10 +107,11 @@ JSON 文件或自制 append log 看似少一个数据库，实际还要重新实
 |---|---|---|
 | `@ordarium/dsh` | 普通 DSH 插件作者 | `defineAction`、`effects`、`schema/defineSchema`、`installOrdarium` 与必要作者类型 |
 | `@ordarium/dsh/advanced` | 高级 DSH 集成作者 | per-action binding、Operations binding、custom ledger、lifecycle tuning |
-| `@ordarium/core` | 宿主与框架作者 | Action/Host/Ledger port、Runtime、状态/恢复语义、MemoryLedger、Operations |
-| `@ordarium/ledger-sqlite` | 需要默认 durable 实现的嵌入者 | WAL、事务性 semantic CAS、独立 LiveLease、history、migration/backup |
-| `@ordarium/host-mcp`（发布门） | MCP 客户端 harness / 宿主 | MCP server 适配叶包：tools 面映射到 HostInvocationPort，ops 工具受权暴露 |
-| `@ordarium/testing` | Action 与 adapter 作者 | crash checkpoint、手动时钟、固定 identity、ledger/Provider/宿主 conformance |
+| `@ordarium/core` | 宿主与框架作者 | Action/Host/Ledger port、Runtime、状态/恢复语义、管理型 state（`createStateStore`）与变更订阅（`StateChangeFeed`/`supportsStateChangeFeed`）、MemoryLedger、Operations |
+| `@ordarium/ledger-sqlite` | 需要默认 durable 实现的嵌入者 | WAL、事务性 semantic CAS、独立 LiveLease、history、state 修订链与定序表（schema v4）、前向 migration、backup |
+| `@ordarium/host-mcp` | MCP 客户端 harness / 宿主 | MCP server 适配叶包：tools 面映射到 HostInvocationPort，ops 工具受权暴露 |
+| `@ordarium/host-kit` | 自建宿主适配者 | versioned Host Adapter：`assertHostContract` exact-match 握手 + curated 适配面 + `runHostAdapterConformance` runner re-export |
+| `@ordarium/testing` | Action 与 adapter 作者 | crash checkpoint、手动时钟、固定 identity、ledger/Provider/宿主 conformance（含 state 与变更订阅） |
 
 根入口不会暴露 Runtime、Ledger、raw record 或 migration。需要这些能力的框架作者必须显式选择 advanced subpath 或对应低层包；Operations 仍留在 core，不拆第五个运行时包。
 
@@ -107,11 +132,11 @@ Ledger 不保存 raw input、raw business key、credential、任意 stack 或未
 
 ## 开发者文档
 
-写插件、选 profile、查报错、做运维——十篇按角色组织的指南（快速开始、核心概念、effect profiles、错误码全表、授权、ledger、运维面、宿主、测试、生命周期与恢复）：**[docs/dev/](docs/dev/README.md)**。不需要先读维护合同 12–17。
+写插件、选 profile、查报错、做运维、观测 state——十一篇按角色组织的指南（快速开始、核心概念、effect profiles、错误码全表、授权、ledger、运维面、宿主、测试、生命周期与恢复、管理型 state 与变更订阅）：**[docs/dev/](docs/dev/README.md)**。不需要先读维护合同 12–19。
 
 ## 安装（GitHub 分发）
 
-分发渠道为 GitHub（DSH 插件生态惯例；分发决议见 `evidence/G7/release-candidate-report.md` §5）。本工程已拆分为独立仓库（https://github.com/orangeofcarl0-sys/ordarium），五包位于 `packages/`，版本锚为 git tag（首个 `ordarium-v1.0.0`）与同名 GitHub Release。两种消费方式（dsh profile 等 pnpm 场景另有**工作区成员模式**，见 [docs/dev/01](docs/dev/01-getting-started.md)）：
+分发渠道为 GitHub（DSH 插件生态惯例；分发决议见 `evidence/G7/release-candidate-report.md` §5）。本工程为独立仓库（https://github.com/orangeofcarl0-sys/ordarium），六包位于 `packages/`，版本锚为 git tag（`ordarium-v1.0.0` → `ordarium-v1.3.1`）与同名 GitHub Release（自 `ordarium-v1.2.0` 起为六 tarball）。两种消费方式（dsh profile 等 pnpm 场景另有**工作区成员模式**，见 [docs/dev/01](docs/dev/01-getting-started.md)）：
 
 **方式一：同 workspace 开发（推荐起步；Palimpsest 复兴插件即此路径）**
 
@@ -121,13 +146,13 @@ cd ordarium && pnpm install && pnpm run build
 # 你的插件工程依赖本 workspace（pnpm workspace 链接或 path 协议引入）
 ```
 
-**方式二：GitHub Release 五 tarball 一次安装**（五包互相依赖自洽性即 `pnpm test:package` 验证的内容）
+**方式二：GitHub Release 六 tarball 一次安装**（六包互相依赖自洽性即 `pnpm test:package` 验证的内容）
 
 ```bash
-pnpm add <release-assets>/ordarium-{core,ledger-sqlite,dsh,testing,host-mcp}-1.1.0.tgz
+pnpm add <release-assets>/ordarium-{core,ledger-sqlite,dsh,testing,host-mcp,host-kit}-1.3.1.tgz
 ```
 
-私有期下载 Release 资产需带 token；转公开后 URL（`https://github.com/orangeofcarl0-sys/ordarium/releases/download/ordarium-v1.1.0/<name>.tgz`）直接可用。
+私有期下载 Release 资产需带 token；转公开后 URL（`https://github.com/orangeofcarl0-sys/ordarium/releases/download/ordarium-v1.3.1/<name>.tgz`）直接可用。
 
 > 已知限制（如实记录）：`pnpm add github:...#path=packages/dsh` 式单包 git 依赖暂不可用——包间 `workspace:*` 依赖在 git 安装语境无法解析；多包消费走上述两种方式。公共 npm 发布仍是未来第三选项（触发条件见 G7 报告）。
 
@@ -141,6 +166,6 @@ pnpm verify:architecture
 
 `pnpm verify:architecture`（G0 起生效）机器校验包依赖图与禁止边、public API 快照、错误码/状态 union、SQLite schema 基线与 Compatibility Register。任何漂移必须先在 `evidence/` 附 Architecture Delta Sheet，再用 `pnpm snapshots:update` 重新生成快照并一起提交。
 
-五包发布线为 `1.1.0`（正式线；MIT；G11 为 1.0.0 之后的首个 minor 加法，见 `evidence/G11/delta-G11-002-release-line.md`）。engines 分层：ledger-sqlite / dsh / host-mcp 为 Node.js `>=24.15.0`，core / testing 为 `>=24.0.0`；Docker 矩阵（24.15.0 下限 + 当前 24.x）已在 `evidence/G7/node-matrix-report.md` 闭环，可用 `pnpm verify:matrix` 复跑。
+六包发布线为 **`1.3.1`**（正式线；MIT；1.1.0 起为 G11 管理型 state kind、1.2.0 为 G18 host-kit、1.3.x 为 ORD-BOOT-0/0.1 变更订阅——每版档位与消费者可见变化见 [`docs/19-release-history.md`](docs/19-release-history.md)，发布沟通纪律见 [`docs/18`](docs/18-release-compat-policy.md)）。engines 分层：`ledger-sqlite` / `dsh` / `host-mcp` 为 Node.js `>=24.15.0`（携带 `node:sqlite` 的那一层），`core` / `testing` / `host-kit` 为 `>=24.0.0`；Docker 矩阵（24.15.0 下限 + 当前 24.x）已闭环（`evidence/G7/node-matrix-report.md`，最新复跑见 `evidence/ORD-BOOT-0.1/exit-report.md` §5），可用 `pnpm verify:matrix` 复跑。
 
-完整合同、实施状态、架构与阶段验收见 [`docs/12-ordarium-product-baseline.md`](docs/12-ordarium-product-baseline.md)、[`docs/13-ordarium-action-contract.md`](docs/13-ordarium-action-contract.md)、[`docs/14-ordarium-implementation-plan.md`](docs/14-ordarium-implementation-plan.md)、[`docs/15-ordarium-complete-architecture.md`](docs/15-ordarium-complete-architecture.md)、[`docs/16-ordarium-mermaid-architecture-atlas.md`](docs/16-ordarium-mermaid-architecture-atlas.md) 与 [`docs/17-ordarium-goals-and-acceptance.md`](docs/17-ordarium-goals-and-acceptance.md)。
+完整合同、实施状态、架构、阶段验收与发布史见 [`docs/12-ordarium-product-baseline.md`](docs/12-ordarium-product-baseline.md)、[`docs/13-ordarium-action-contract.md`](docs/13-ordarium-action-contract.md)、[`docs/14-ordarium-implementation-plan.md`](docs/14-ordarium-implementation-plan.md)、[`docs/15-ordarium-complete-architecture.md`](docs/15-ordarium-complete-architecture.md)、[`docs/16-ordarium-mermaid-architecture-atlas.md`](docs/16-ordarium-mermaid-architecture-atlas.md)、[`docs/17-ordarium-goals-and-acceptance.md`](docs/17-ordarium-goals-and-acceptance.md)、[`docs/18-release-compat-policy.md`](docs/18-release-compat-policy.md) 与 [`docs/19-release-history.md`](docs/19-release-history.md)。
