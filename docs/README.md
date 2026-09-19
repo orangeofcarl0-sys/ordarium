@@ -1,83 +1,130 @@
-# Ordarium 文档
+# Ordarium Documentation
 
-Ordarium 文档分四层。**普通开发者不需要从 Goal/证据历史开始读。**
+**第一次使用 Ordarium，不要从 Architecture 或 Gxx 历史开始。**
 
-| 层 | 什么时候读 | 入口 |
-|---|---|---|
-| **Guide** | 正在接入、开发或运维 Ordarium | [`dev/`](dev/README.md) |
-| **Reference** | 需要精确的当前合同 | [`12`](12-ordarium-product-baseline.md)–[`17`](17-ordarium-goals-and-acceptance.md) |
-| **Release** | 升级或发布 | [`18`](18-release-compat-policy.md)、[`19`](19-release-history.md) |
-| **Archive** | 需要设计史、研究或交付证据 | [`research/`](research/agent-landscape-2026-08/README.md)、[`../evidence/`](../evidence/README.md) |
+从一个真实问题开始：
 
-当前线：
+> Provider 已经产生副作用，但进程在本地记录成功之前崩了。现在应该 retry、query，还是停止？
+
+## Start here
+
+| 页面 | 你会得到什么 |
+|---|---|
+| [5-minute Quickstart](start/quickstart.md) | 把一段普通 side-effect API call 包进 Ordarium |
+| [Failure Lab](start/failure-lab.md) | 真的制造 crash-after-provider-commit，再观察恢复 |
+| [Choose a profile](start/choose-a-profile.md) | 不背术语，根据 Provider 能力直接选 profile |
+
+推荐顺序：
 
 ```text
-package version           1.3.1 published / 1.3.2 workspace
-HOST_CONTRACT_VERSION     1
-SQLite user_version       4
+Quickstart
+→ Failure Lab
+→ Choose a profile
+→ 一个与你 Provider 匹配的 Tutorial
 ```
 
-## 按任务进入
+## Tutorials — build one complete integration
 
-### 我想先用起来
+- [Provider supports an idempotency key](tutorials/provider-idempotency-key.md)
+- [Provider supports authoritative reconciliation](tutorials/provider-reconciliation.md)
+- [Provider has no recovery primitive](tutorials/no-recovery-primitive.md)
+- [Build a Host Adapter](tutorials/host-adapter.md)
 
-1. [01 · Getting started](dev/01-getting-started.md)
-2. [02 · Core concepts](dev/02-core-concepts.md)
-3. [03 · Effect profiles](dev/03-effect-profiles.md)
-4. [04 · Errors](dev/04-errors.md)
+Tutorial 的目标是“跟着做完”，而不是列 API。
 
-### 我在写宿主适配
+## How-to — solve one engineering task
 
-1. [08 · Hosts](dev/08-hosts.md)
-2. [05 · Authorization](dev/05-authorization.md)
-3. [09 · Testing](dev/09-testing.md)
-4. [13 · Action contract](13-ordarium-action-contract.md)
+- [Inspect and resolve an uncertain Operation](how-to/inspect-uncertain-operation.md)
+- [Run multiple workers safely](how-to/run-multiple-workers.md)
+- [Build a custom Ledger](how-to/build-custom-ledger.md)
+- [Store and watch management state](how-to/store-and-watch-state.md)
 
-### 我要构建 durable project/runtime state
+How-to 假设你已经理解基础概念，只回答“怎么做”。
 
-1. [11 · Management state](dev/11-state.md)
-2. [06 · Ledgers](dev/06-ledgers.md)
-3. [15 · Architecture](15-ordarium-complete-architecture.md)
+## Recipes — map Ordarium to real side effects
 
-### 我要排查 crash / replay / uncertain
+- [Payments](recipes/payments.md)
+- [Email and messages](recipes/email-and-messages.md)
+- [Issues and tickets](recipes/issues-and-tickets.md)
+- [Cloud resources](recipes/cloud-resources.md)
+- [AI agent tool actions](recipes/ai-tool-actions.md)
 
-1. [10 · Lifecycle & recovery](dev/10-lifecycle-and-recovery.md)
-2. [07 · Operations](dev/07-operations.md)
-3. [03 · Effect profiles](dev/03-effect-profiles.md)
+Recipe 不会假设某个具体 SaaS 一定具备幂等/查询能力；它会告诉你**如何根据你实际使用的 Provider 能力选择合同**。
 
-### 我在维护 Ordarium 本身
+## Concepts — understand the mental model
 
-1. [12 · Product baseline](12-ordarium-product-baseline.md)
-2. [13 · Action contract](13-ordarium-action-contract.md)
-3. [14 · Implementation map](14-ordarium-implementation-plan.md)
-4. [15 · Architecture](15-ordarium-complete-architecture.md)
-5. [16 · Architecture atlas](16-ordarium-mermaid-architecture-atlas.md)
-6. [17 · Acceptance contract](17-ordarium-goals-and-acceptance.md)
-7. [18 · Compatibility policy](18-release-compat-policy.md)
-8. [19 · Release history](19-release-history.md)
+- [Operation identity](concepts/operation-identity.md)
+- [Uncertain](concepts/uncertain.md)
+- [Claim / Lease / Fencing](concepts/claim-lease-fencing.md)
+- [Authorization evidence](concepts/authorization-evidence.md)
+- [Provider capabilities](concepts/provider-capabilities.md)
 
-## 哪些是当前合同，哪些是历史
-
-源码与机器 snapshot 是实现事实。`12–17` 描述当前产品/运行/架构合同，`18–19` 描述发布纪律与已发布事实。
-
-历史 Goal、Delta Sheet、实验、设计推演与 exit report 保留在：
+概念页统一使用：
 
 ```text
-evidence/**
+The problem
+→ 30-second answer
+→ concrete example
+→ failure behavior
+→ common mistakes
+→ reference links
+```
+
+## Developer reference
+
+现有 `docs/dev/` 保留为 compact developer reference：
+
+- [Developer guide index](dev/README.md)
+- [Getting started](dev/01-getting-started.md)
+- [Core concepts](dev/02-core-concepts.md)
+- [Effect profiles](dev/03-effect-profiles.md)
+- [Errors](dev/04-errors.md)
+- [Authorization](dev/05-authorization.md)
+- [Ledgers](dev/06-ledgers.md)
+- [Operations](dev/07-operations.md)
+- [Hosts](dev/08-hosts.md)
+- [Testing](dev/09-testing.md)
+- [Lifecycle & recovery](dev/10-lifecycle-and-recovery.md)
+- [Management state](dev/11-state.md)
+
+## Normative reference / maintainer docs
+
+- [12 · Product baseline](12-ordarium-product-baseline.md)
+- [13 · Action & runtime contract](13-ordarium-action-contract.md)
+- [14 · Implementation map](14-ordarium-implementation-plan.md)
+- [15 · Architecture](15-ordarium-complete-architecture.md)
+- [16 · Architecture atlas](16-ordarium-mermaid-architecture-atlas.md)
+- [17 · Acceptance contract](17-ordarium-goals-and-acceptance.md)
+- [18 · Compatibility policy](18-release-compat-policy.md)
+- [19 · Release history](19-release-history.md)
+
+这部分是 reference，不是 onboarding。
+
+## Research & evidence
+
+历史材料继续保留：
+
+```text
 docs/research/**
+evidence/**
 ```
 
-它们继续承担可追溯性，但不再是普通用户的主阅读路径。
+它们负责 provenance / design history / delivery evidence，不再承担普通开发者教学。
 
-## 机器验证
+## Coding-agent resources
+
+- [`llms.txt`](llms.txt)：精简索引 + 核心合同
+- [`llms-full.txt`](llms-full.txt)：面向 coding agent 的主文档合并文本，不包含 research/evidence 全量历史。它是**派生文件**：改完文档后用 `node tools/build-llms-full.mjs` 重新生成（`--check` 只校验是否过期、不写入）
+
+## Machine verification
 
 ```text
 pnpm check                build + test
 pnpm test:integration     SQLite / host integration
-pnpm test:conformance     portable conformance
-pnpm test:package         package consumer probe
-pnpm verify:architecture  package/API/schema/compatibility invariants
-pnpm verify:docs          links/fences + README claim audit
+pnpm test:conformance     conformance suites
+pnpm test:package         packaged consumer probe
+pnpm verify:architecture  API/schema/package invariants
+pnpm verify:docs          links/fences/README claims
 pnpm verify:release       aggregate release gate
-pnpm verify:matrix        Node runtime matrix
+pnpm verify:matrix        Node matrix
 ```

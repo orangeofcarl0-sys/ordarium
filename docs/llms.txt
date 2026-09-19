@@ -1,0 +1,75 @@
+# Ordarium LLM Documentation Index
+
+Current product facts:
+
+- package line: 1.3.1 published / 1.3.2 workspace
+- HOST_CONTRACT_VERSION: 1
+- SQLite user_version: 4
+- OperationRecord schemaVersion: 2
+- StateRecord schemaVersion: 1
+- @ordarium/dsh: legacy / frozen; prefer core + host-kit or host-mcp
+
+## What Ordarium is
+
+Ordarium is a host-neutral Safe Action SDK for durable side effects. It provides stable Operation identity, classified authorization evidence, durable execution state, claim/lease/fencing, effect-aware recovery, revisioned management state, and StateChangeFeed.
+
+Ordarium does not promise exactly-once for arbitrary external APIs. Re-execution is permitted only when declared Provider/runtime evidence makes it safe. Otherwise the Operation remains uncertain.
+
+## Start here
+
+- docs/start/quickstart.md
+- docs/start/failure-lab.md
+- docs/start/choose-a-profile.md
+
+## Tutorials
+
+- docs/tutorials/provider-idempotency-key.md
+- docs/tutorials/provider-reconciliation.md
+- docs/tutorials/no-recovery-primitive.md
+- docs/tutorials/host-adapter.md
+
+## How-to
+
+- docs/how-to/inspect-uncertain-operation.md
+- docs/how-to/run-multiple-workers.md
+- docs/how-to/build-custom-ledger.md
+- docs/how-to/store-and-watch-state.md
+
+## Recipes
+
+- docs/recipes/payments.md
+- docs/recipes/email-and-messages.md
+- docs/recipes/issues-and-tickets.md
+- docs/recipes/cloud-resources.md
+- docs/recipes/ai-tool-actions.md
+
+## Concepts
+
+- docs/concepts/operation-identity.md
+- docs/concepts/uncertain.md
+- docs/concepts/claim-lease-fencing.md
+- docs/concepts/authorization-evidence.md
+- docs/concepts/provider-capabilities.md
+
+## Reference
+
+- docs/dev/README.md
+- docs/13-ordarium-action-contract.md
+- docs/15-ordarium-complete-architecture.md
+- docs/18-release-compat-policy.md
+- docs/19-release-history.md
+
+## Safety rules for coding agents
+
+1. Never infer idempotency or reconciliation capability from HTTP method names or SDK naming.
+2. Never blind-retry OPERATION_UNCERTAIN.
+3. Managed writes require stable InvocationIdentity and authorization evidence.
+4. Action authorization and OperatorAuthorization are separate.
+5. reconcileOnly must never execute Action.execute().
+6. Finite idempotency deadlines do not renew after restart/replay.
+7. Durable-ledger failure must not silently fall back to MemoryLedger.
+8. Host-specific framework types stay outside @ordarium/core.
+9. State refs are structural pointers, not automatic authority/invalidation semantics.
+10. Change-feed cursor is an opaque resume position, not causal/business authority.
+
+Research/evidence archives are intentionally excluded from default agent context. Read them only when provenance or historical design decisions are needed.

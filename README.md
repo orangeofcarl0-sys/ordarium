@@ -1,36 +1,104 @@
 # Ordarium
 
-**Ordarium 是一个 host-neutral 的 Safe Action SDK：为真实副作用提供稳定身份、持久证据、并发所有权与诚实恢复。**
+**Make external side effects survive retries, crashes, and races — without guessing.**
 
-它位于宿主的 Tool Pipeline 与真正产生业务变化的 Provider 之间。宿主继续拥有 Agent Loop、工具选择、审批、凭据、Sandbox、Session 与 UI；Ordarium 只负责一个更窄、但必须可靠的边界：
+你有一段普通的工具代码：
 
-- 把重放/并发的调用归并到稳定的 **Operation**；
-- 在执行副作用前持久化身份、授权与执行状态；
-- 用 claim、lease 与 fencing 协调多个执行者；
-- 根据 Provider **实际具备**的幂等/查询能力决定是否能重试；
-- 结果无法证明时保持 `uncertain`，不伪造成功或失败；
-- 在同一 ledger 上提供 revisioned management state 与增量 `StateChangeFeed`。
+```ts
+const charge = await paymentApi.charge({ orderId, amount });
+```
 
-Ordarium **不承诺 arbitrary API 的 exactly-once**。只有 Provider 真正支持稳定 operation key、权威查询或相应 fencing 时，运行时才会采用对应恢复路径。
+现在考虑最麻烦的一种故障：
 
-当前发布：**1.3.1**（已发布，tag `ordarium-v1.3.1`）· 工作区 **1.3.2**（已 bump，含类型面 `@deprecated` 标记，待发布）· MIT · 通过 GitHub tags / Releases 分发。
+```text
+payment provider 已经扣款
+        ↓
+response 正在返回
+        ↓
+💥 进程在本地保存结果之前崩溃
+        ↓
+应用重启
+        ↓
+应该重试吗？
+```
 
-> `@ordarium/dsh` 是 **legacy / frozen** 宿主适配叶包。既有消费者继续可用；新接入优先使用 `@ordarium/core`、`@ordarium/host-kit`，或直接使用 `@ordarium/host-mcp`。自 1.3.2 起该包公开声明全部带 `@deprecated`（IDE / 类型检查直接提示迁移方向），运行时与类型形状零变化。
+如果 Provider 支持稳定 idempotency key，答案可能是“使用同一个 key 安全重做”；如果 Provider 能权威查询，答案可能是“先查”；如果二者都没有，**正确答案可能就是 `uncertain`，不能盲重试**。
 
-## 为什么需要 Ordarium
+Ordarium 就负责这条边界。
 
-普通 Tool Wrapper 往往只能告诉你“函数被调用了”，但在崩溃、重放和并发发生后，它通常回答不了：
+它是一个 host-neutral 的 Safe Action SDK：为真实副作用提供稳定 **Operation identity**、durable execution evidence、并发 claim/fencing，以及基于 Provider 实际能力的恢复决策。
 
-- Provider 已经完成副作用，但本地记账前进程崩了——到底成功了吗？
-- 相同 tool call 被 replay / transport 再次投递——它是同一项工作还是新工作？
-- 两个进程同时处理同一 Operation——谁拥有执行权？
-- Provider 没有幂等键或权威查询——可以重试吗？
-- 这个副作用到底由哪一份授权证据放行？
-- 唯一诚实答案是“目前无法证明”时，系统该保存什么状态？
+> Ordarium 不承诺 arbitrary API 的 exactly-once。它只在证据证明安全时重执行；证明不了外部结果时，保持 `uncertain`。
 
-Ordarium 把这些判断从各插件自己的 `try/catch + retry` 中抽出来，形成明确、可测试的运行合同。
+当前发布：**1.3.1**（已发布，tag `ordarium-v1.3.1`）· 工作区 **1.3.2**（已 bump，含类型面 `@deprecated` 标记，待发布）· MIT · GitHub tags / Releases。
 
-## Quick start
+## 第一次来？从这里开始
+
+### 1. 用 5 分钟保护一个 API call
+
+[**Quickstart — Protect one side effect**](docs/start/quickstart.md)
+
+从普通 `await provider.create(...)` 开始，只增加：
+
+```text
+Action contract
++ stable invocation identity
++ effect profile
++ durable ledger
+```
+
+### 2. 然后故意把进程杀掉
+
+[**Failure Lab — crash after the Provider commits**](docs/start/failure-lab.md)
+
+这个实验会真的制造：
+
+```text
+Provider 已持久化 effect
+→ Node 进程立即退出
+→ Ordarium 尚未写 success
+→ 同一调用重启恢复
+```
+
+你会亲眼看到三种完全不同的正确行为：
+
+```text
+guarded       → uncertain，不再次调用 Provider
+idempotent    → 使用同一 idempotency key 重做
+reconcilable  → 先查询 Provider，再决定
+```
+
+### 3. 根据 Provider 能力选 Profile
+
+[**Choose a profile by what the Provider can prove**](docs/start/choose-a-profile.md)
+
+不要背五个名词。先回答三个问题：
+
+```text
+这个调用会产生副作用吗？
+Provider 支持稳定幂等键吗？
+Provider 能权威查询结果吗？
+```
+
+## Before / After
+
+### Before
+
+```ts
+async function createTicket(title: string) {
+  return ticketApi.create({ title });
+}
+```
+
+它的类型签名没有告诉你：
+
+- replay 是否会创建第二张 ticket；
+- crash 后是否允许 retry；
+- 两个进程同时调用时谁拥有执行权；
+- 这次调用由什么授权放行；
+- response 丢失后外部结果是什么。
+
+### With Ordarium
 
 ```ts
 import { OrdariumRuntime, defineAction, effects, schema } from "@ordarium/core";
@@ -40,19 +108,13 @@ const createTicket = defineAction({
   name: "ticket.create",
   version: "1",
   description: "Create one support ticket",
+  input: schema.object({ title: schema.string({ minLength: 1 }) }),
+  output: schema.object({ id: schema.string() }),
 
-  input: schema.object({
-    title: schema.string({ minLength: 1 }),
-  }),
-
-  output: schema.object({
-    id: schema.string(),
-  }),
-
-  // Provider 真正接受稳定幂等键。
+  // Only choose this if the Provider truly honors this key.
   effect: effects.idempotent(),
 
-  async execute(input, context) {
+  execute(input, context) {
     return ticketApi.create(input, {
       idempotencyKey: context.idempotencyKey,
       signal: context.signal,
@@ -64,217 +126,132 @@ const runtime = new OrdariumRuntime({
   ledger: new SqliteLedger("/var/lib/myapp/ordarium.sqlite"),
 });
 
-const result = await runtime.run(
-  createTicket,
-  { title: "Printer is on fire" },
-  {
-    identity: {
-      source: "myapp",
-      scope: sessionId,
-      callId,
-    },
-    authorization: {
-      decision: "allow",
-      kind: "host-admission",
-      source: "myapp:tool-admission",
-    },
+const ticket = await runtime.run(createTicket, { title: "Printer is on fire" }, {
+  identity: {
+    source: "support-agent",
+    scope: sessionId,
+    callId: toolCallId,
   },
-);
-```
-
-对 managed write，稳定 identity 是必需的。默认 logical key 为：
-
-```text
-source + scope + callId
-```
-
-Action 也可以通过 `key(input, identity)` 声明更强的业务键。
-
-真正的宿主适配不要把 `runtime.run(...)` 散落在宿主各处，而应通过冻结的 [`HostInvocationPort`](docs/dev/08-hosts.md) 进入。
-
-## Effect profiles
-
-Effect profile 描述的是 **Action + Provider 的能力剖面**，不是“安全等级”。
-
-| Profile | 什么时候用 | 崩溃/恢复姿态 |
-|---|---|---|
-| `effects.readOnly()` | 无外部副作用 | 可以重新执行 |
-| `effects.guarded()` | 有副作用，但 Provider 无安全重放/查询原语 | 需要授权；dispatch 后结果不明则保持 `uncertain` |
-| `effects.idempotent()` | Provider 真正接受稳定 operation key | 在声明的幂等窗口内可复用同一 key |
-| `effects.reconcilable()` | Provider 能权威查询外部结果 | 先 query，再根据证据决定终态或是否可重做 |
-| `effects.unmanaged()` | 明确的迁移/弱模式 opt-out | 不提供 managed crash/restart 保证 |
-
-选择方法见 [Effect profiles](docs/dev/03-effect-profiles.md)，精确定义见 [Action contract](docs/13-ordarium-action-contract.md)。
-
-## 两条持久时间线
-
-### Operation：副作用执行证据
-
-一个 Operation 表示“某个版本 Action 的一项稳定逻辑工作”。
-
-```text
-proposed
-  → authorized | denied
-  → claimed
-  → dispatched
-  → succeeded | failed | cancelled | uncertain | reconciled
-```
-
-Operation 记录稳定身份、授权、语义修订、attempt、fencing 与终态/不确定性。
-
-### Management state：宿主定义的修订状态
-
-```ts
-import { createStateStore } from "@ordarium/core";
-
-const state = createStateStore({ ledger });
-
-await state.write({
-  namespace: "workflow",
-  key: "job-42",
-  expectedRevision: 0,
-  value: { phase: "queued" },
-  refs: [],
-  identity,
+  authorization: {
+    decision: "allow",
+    kind: "host-admission",
+    source: "support-agent:tool-admission",
+  },
 });
 ```
 
-State 使用 revision CAS。`refs` 可以指向 Operation 或精确 state revision，并在写入前检查存在性；但 **Ordarium 不解释这些引用的业务含义**。
+Ordarium 现在能够把 replay/race 映射到同一个 durable Operation，并根据 Action 的 effect contract 决定恢复时允许什么。
 
-增量观测：
+## 常见问题，直接去对应页面
 
-```ts
-const page = await state.changes(
-  { namespace: "workflow", limit: 100 },
-  cursor,
-);
-
-page.changes;
-page.cursor;   // 永远返回，可作为后续 resume 位点
-page.hasMore;
-```
-
-这里的顺序只表示 **ledger commit-observation order**；它不承诺因果关系、业务优先级或分布式 exactly-once。
-
-## Ledger
-
-`@ordarium/core` 依赖 `OperationLedger + LedgerCapabilities`，不是硬编码 SQLite。
-
-| Ledger | 适合 | 不承诺 |
-|---|---|---|
-| `SqliteLedger` | 默认 crash-durable 本机部署、本机多进程协调、Operation/State history、durable cursor | 多主机共识 |
-| `MemoryLedger` | 单元测试、single-isolate read-only、明确的 volatile 场景 | 重启恢复、跨进程协调 |
-| conformant custom ledger | 宿主已有 durable store | 超出 capability 声明与 conformance 证据的保证 |
-
-Managed write 的 ledger 能力不够时，Provider 调用前就返回 `LEDGER_CAPABILITY_REQUIRED`。**不会静默 fallback 到 `MemoryLedger`。**
-
-## Host integration
-
-宿主入口很小：
-
-```ts
-interface HostInvocationPort {
-  invoke(action, input, invocation): Promise<unknown>;
-}
-```
-
-宿主提供：
-
-- 稳定 `InvocationIdentity`；
-- 可选、分类后的 `AuthorizationDecision`；
-- 可选 `ProviderPrincipalRef`；
-- 可选 `AbortSignal`。
-
-当前宿主相关包：
-
-| Package | 作用 |
+| 我现在的问题 | 读这里 |
 |---|---|
-| `@ordarium/host-kit` | host contract 握手 + curated types + portable conformance runner |
-| `@ordarium/host-mcp` | MCP stdio 宿主适配 |
+| Provider 有 idempotency key，怎么正确接？ | [Idempotency-key tutorial](docs/tutorials/provider-idempotency-key.md) |
+| Provider 可以按业务键查询结果 | [Reconciliation tutorial](docs/tutorials/provider-reconciliation.md) |
+| Provider 什么恢复原语都没有 | [Guarded tutorial](docs/tutorials/no-recovery-primitive.md) |
+| Operation 已经 `uncertain`，生产上怎么办？ | [Inspect an uncertain Operation](docs/how-to/inspect-uncertain-operation.md) |
+| 多个 worker 会不会一起执行？ | [Run multiple workers safely](docs/how-to/run-multiple-workers.md) |
+| 我要写自己的 Host Adapter | [Build a Host Adapter](docs/tutorials/host-adapter.md) |
+| 我要写 custom Ledger | [Build a custom Ledger](docs/how-to/build-custom-ledger.md) |
+| 我要保存 Project/Peer/Subscription 等状态 | [Store & watch management state](docs/how-to/store-and-watch-state.md) |
+
+## Recipes
+
+具体场景不要从抽象名词开始：
+
+- [Payments](docs/recipes/payments.md)
+- [Email / message sending](docs/recipes/email-and-messages.md)
+- [Create an issue / ticket](docs/recipes/issues-and-tickets.md)
+- [Cloud resource creation](docs/recipes/cloud-resources.md)
+- [AI agent tool actions](docs/recipes/ai-tool-actions.md)
+
+每个 recipe 都先问“Provider 能证明什么”，然后才选 profile。
+
+## 核心概念——需要时再读
+
+- [Operation identity：Ordarium 如何判断两次调用是不是同一项工作](docs/concepts/operation-identity.md)
+- [`uncertain`：为什么不知道也是一种正确状态](docs/concepts/uncertain.md)
+- [Claim / Lease / Fencing：多个 worker 如何避免同时拥有写权](docs/concepts/claim-lease-fencing.md)
+- [Authorization evidence：Identity 与 Authority 为什么必须分开](docs/concepts/authorization-evidence.md)
+- [Provider capabilities：真正决定恢复能力的是谁](docs/concepts/provider-capabilities.md)
+
+## Ordarium 的边界
+
+Ordarium 负责：
+
+```text
+stable Operation identity
++ authorization evidence
++ durable dispatch/history
++ claim / lease / fencing
++ recovery decision
++ revisioned management state
+```
+
+它**不负责**：
+
+```text
+Agent Loop
+Planner / Scheduler
+Prompt / Context
+Model Provider
+Approval UI
+Credentials
+Sandbox
+Distributed consensus
+Workflow semantics
+```
+
+这些继续属于 Host、Provider 或更高层 Runtime（例如 Palimpsest）。
+
+## Packages
+
+| Package | 用途 | Node |
+|---|---|---|
+| `@ordarium/core` | Action / Runtime / Ledger & State ports / Recovery / Operations | `>=24.0.0` |
+| `@ordarium/ledger-sqlite` | 默认 crash-durable local ledger | `>=24.15.0` |
+| `@ordarium/host-kit` | 自建 Host Adapter + conformance | `>=24.0.0` |
+| `@ordarium/host-mcp` | MCP host adapter | `>=24.15.0` |
+| `@ordarium/testing` | fault injection + conformance helpers | `>=24.0.0` |
 
 当前：
 
 ```text
-HOST_CONTRACT_VERSION = 1
+package version           1.3.1 published / 1.3.2 workspace
+HOST_CONTRACT_VERSION     1
+SQLite user_version       4
+OperationRecord schema    2
+StateRecord schema        1
 ```
 
-它与 package semver、SQLite schema version 相互独立。
+> **`@ordarium/dsh`（legacy / frozen）**：最初的首宿主适配叶包，已冻结——既有消费者继续可用（自 1.3.2 起其公开声明全部带 `@deprecated`，运行时与类型形状零变化），新接入请走 `@ordarium/core` + `@ordarium/host-kit` 或 `@ordarium/host-mcp`。
 
-## Packages
-
-| Package | 职责 | Node |
-|---|---|---|
-| `@ordarium/core` | Action / Runtime / Ledger & State ports / Recovery / Operations | `>=24.0.0` |
-| `@ordarium/ledger-sqlite` | reference durable local ledger、迁移、本机协调 | `>=24.15.0` |
-| `@ordarium/host-kit` | 自建宿主适配合同与 conformance | `>=24.0.0` |
-| `@ordarium/host-mcp` | MCP 叶适配器 | `>=24.15.0` |
-| `@ordarium/testing` | fault injection 与 conformance helpers | `>=24.0.0` |
-
-每个包都有就地 README，位于 [`packages/`](packages/)。
-
-## 分发与开发
-
-当前正式分发渠道是 **GitHub tags / Releases**，不是公共 npm。
-
-版本锚：
+## Documentation map
 
 ```text
-ordarium-v1.3.1          published
-ordarium-v1.3.2          workspace, pending release
+Start       → 先跑起来、先看一次真实故障
+Tutorials   → 端到端完成一种 Provider/Host 接入
+How-to      → 解决具体工程任务
+Recipes     → 套到真实业务场景
+Concepts    → 理解抽象为什么存在
+Reference   → 精确 API / contract / architecture
+Archive     → research / evidence / release history
 ```
 
-仓库开发：
+总入口：[docs/README.md](docs/README.md)
 
-```bash
-git clone https://github.com/orangeofcarl0-sys/ordarium.git
-cd ordarium
-pnpm install
-pnpm build
-pnpm check
-```
+给 coding agents 的精简上下文：[docs/llms.txt](docs/llms.txt)
 
-消费方式与当前 package-manager 限制见 [Getting started](docs/dev/01-getting-started.md)。
-
-## 明确不做
-
-Ordarium 不是：
-
-- Agent Loop；
-- Planner / 多 Agent Scheduler；
-- Prompt / Context assembler；
-- Model Provider；
-- Sandbox；
-- Credential Vault；
-- 第二套 Approval UI；
-- 分布式共识系统；
-- 通用 Workflow Engine；
-- 普通使用所必需的独立 daemon/control plane。
-
-这些职责属于宿主或更高层 runtime，例如 Palimpsest。
-
-## 文档
-
-- **开始使用**：[Developer guide](docs/dev/README.md)
-- **产品边界**：[Product baseline](docs/12-ordarium-product-baseline.md)
-- **精确执行合同**：[Action contract](docs/13-ordarium-action-contract.md)
-- **架构**：[Architecture](docs/15-ordarium-complete-architecture.md)
-- **升级/发布**：[Compatibility policy](docs/18-release-compat-policy.md)
-- **版本事实**：[Release history](docs/19-release-history.md)
-- **历史研究/证据**：[`docs/research/`](docs/research/agent-landscape-2026-08/README.md)、[`evidence/`](evidence/README.md)
-
-总入口：[`docs/README.md`](docs/README.md)。
-
-## Repository verification
+## Verify
 
 ```bash
 pnpm check
-pnpm test:integration
-pnpm test:conformance
-pnpm test:package
 pnpm verify:architecture
 pnpm verify:docs
-pnpm verify:release
-pnpm verify:matrix
 ```
 
-`verify:architecture` 保护包依赖图、public API snapshot、冻结 union、SQLite schema baseline 与 compatibility register；`verify:docs` 检查 Markdown 链接、代码围栏与 README 的宣称边界。
+完整 release gate：
+
+```bash
+pnpm verify:release
+```

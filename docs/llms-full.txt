@@ -1,0 +1,5646 @@
+# Ordarium LLM Full Context
+
+Generated from the current primary documentation. Historical research/evidence is intentionally excluded.
+
+
+<!-- BEGIN README.md -->
+
+# Ordarium
+
+**Make external side effects survive retries, crashes, and races — without guessing.**
+
+你有一段普通的工具代码：
+
+```ts
+const charge = await paymentApi.charge({ orderId, amount });
+```
+
+现在考虑最麻烦的一种故障：
+
+```text
+payment provider 已经扣款
+        ↓
+response 正在返回
+        ↓
+💥 进程在本地保存结果之前崩溃
+        ↓
+应用重启
+        ↓
+应该重试吗？
+```
+
+如果 Provider 支持稳定 idempotency key，答案可能是“使用同一个 key 安全重做”；如果 Provider 能权威查询，答案可能是“先查”；如果二者都没有，**正确答案可能就是 `uncertain`，不能盲重试**。
+
+Ordarium 就负责这条边界。
+
+它是一个 host-neutral 的 Safe Action SDK：为真实副作用提供稳定 **Operation identity**、durable execution evidence、并发 claim/fencing，以及基于 Provider 实际能力的恢复决策。
+
+> Ordarium 不承诺 arbitrary API 的 exactly-once。它只在证据证明安全时重执行；证明不了外部结果时，保持 `uncertain`。
+
+当前发布：**1.3.1**（已发布，tag `ordarium-v1.3.1`）· 工作区 **1.3.2**（已 bump，含类型面 `@deprecated` 标记，待发布）· MIT · GitHub tags / Releases。
+
+## 第一次来？从这里开始
+
+### 1. 用 5 分钟保护一个 API call
+
+[**Quickstart — Protect one side effect**](docs/start/quickstart.md)
+
+从普通 `await provider.create(...)` 开始，只增加：
+
+```text
+Action contract
++ stable invocation identity
++ effect profile
++ durable ledger
+```
+
+### 2. 然后故意把进程杀掉
+
+[**Failure Lab — crash after the Provider commits**](docs/start/failure-lab.md)
+
+这个实验会真的制造：
+
+```text
+Provider 已持久化 effect
+→ Node 进程立即退出
+→ Ordarium 尚未写 success
+→ 同一调用重启恢复
+```
+
+你会亲眼看到三种完全不同的正确行为：
+
+```text
+guarded       → uncertain，不再次调用 Provider
+idempotent    → 使用同一 idempotency key 重做
+reconcilable  → 先查询 Provider，再决定
+```
+
+### 3. 根据 Provider 能力选 Profile
+
+[**Choose a profile by what the Provider can prove**](docs/start/choose-a-profile.md)
+
+不要背五个名词。先回答三个问题：
+
+```text
+这个调用会产生副作用吗？
+Provider 支持稳定幂等键吗？
+Provider 能权威查询结果吗？
+```
+
+## Before / After
+
+### Before
+
+```ts
+async function createTicket(title: string) {
+  return ticketApi.create({ title });
+}
+```
+
+它的类型签名没有告诉你：
+
+- replay 是否会创建第二张 ticket；
+- crash 后是否允许 retry；
+- 两个进程同时调用时谁拥有执行权；
+- 这次调用由什么授权放行；
+- response 丢失后外部结果是什么。
+
+### With Ordarium
+
+```ts
+import { OrdariumRuntime, defineAction, effects, schema } from "@ordarium/core";
+import { SqliteLedger } from "@ordarium/ledger-sqlite";
+
+const createTicket = defineAction({
+  name: "ticket.create",
+  version: "1",
+  description: "Create one support ticket",
+  input: schema.object({ title: schema.string({ minLength: 1 }) }),
+  output: schema.object({ id: schema.string() }),
+
+  // Only choose this if the Provider truly honors this key.
+  effect: effects.idempotent(),
+
+  execute(input, context) {
+    return ticketApi.create(input, {
+      idempotencyKey: context.idempotencyKey,
+      signal: context.signal,
+    });
+  },
+});
+
+const runtime = new OrdariumRuntime({
+  ledger: new SqliteLedger("/var/lib/myapp/ordarium.sqlite"),
+});
+
+const ticket = await runtime.run(createTicket, { title: "Printer is on fire" }, {
+  identity: {
+    source: "support-agent",
+    scope: sessionId,
+    callId: toolCallId,
+  },
+  authorization: {
+    decision: "allow",
+    kind: "host-admission",
+    source: "support-agent:tool-admission",
+  },
+});
+```
+
+Ordarium 现在能够把 replay/race 映射到同一个 durable Operation，并根据 Action 的 effect contract 决定恢复时允许什么。
+
+## 常见问题，直接去对应页面
+
+| 我现在的问题 | 读这里 |
+|---|---|
+| Provider 有 idempotency key，怎么正确接？ | [Idempotency-key tutorial](docs/tutorials/provider-idempotency-key.md) |
+| Provider 可以按业务键查询结果 | [Reconciliation tutorial](docs/tutorials/provider-reconciliation.md) |
+| Provider 什么恢复原语都没有 | [Guarded tutorial](docs/tutorials/no-recovery-primitive.md) |
+| Operation 已经 `uncertain`，生产上怎么办？ | [Inspect an uncertain Operation](docs/how-to/inspect-uncertain-operation.md) |
+| 多个 worker 会不会一起执行？ | [Run multiple workers safely](docs/how-to/run-multiple-workers.md) |
+| 我要写自己的 Host Adapter | [Build a Host Adapter](docs/tutorials/host-adapter.md) |
+| 我要写 custom Ledger | [Build a custom Ledger](docs/how-to/build-custom-ledger.md) |
+| 我要保存 Project/Peer/Subscription 等状态 | [Store & watch management state](docs/how-to/store-and-watch-state.md) |
+
+## Recipes
+
+具体场景不要从抽象名词开始：
+
+- [Payments](docs/recipes/payments.md)
+- [Email / message sending](docs/recipes/email-and-messages.md)
+- [Create an issue / ticket](docs/recipes/issues-and-tickets.md)
+- [Cloud resource creation](docs/recipes/cloud-resources.md)
+- [AI agent tool actions](docs/recipes/ai-tool-actions.md)
+
+每个 recipe 都先问“Provider 能证明什么”，然后才选 profile。
+
+## 核心概念——需要时再读
+
+- [Operation identity：Ordarium 如何判断两次调用是不是同一项工作](docs/concepts/operation-identity.md)
+- [`uncertain`：为什么不知道也是一种正确状态](docs/concepts/uncertain.md)
+- [Claim / Lease / Fencing：多个 worker 如何避免同时拥有写权](docs/concepts/claim-lease-fencing.md)
+- [Authorization evidence：Identity 与 Authority 为什么必须分开](docs/concepts/authorization-evidence.md)
+- [Provider capabilities：真正决定恢复能力的是谁](docs/concepts/provider-capabilities.md)
+
+## Ordarium 的边界
+
+Ordarium 负责：
+
+```text
+stable Operation identity
++ authorization evidence
++ durable dispatch/history
++ claim / lease / fencing
++ recovery decision
++ revisioned management state
+```
+
+它**不负责**：
+
+```text
+Agent Loop
+Planner / Scheduler
+Prompt / Context
+Model Provider
+Approval UI
+Credentials
+Sandbox
+Distributed consensus
+Workflow semantics
+```
+
+这些继续属于 Host、Provider 或更高层 Runtime（例如 Palimpsest）。
+
+## Packages
+
+| Package | 用途 | Node |
+|---|---|---|
+| `@ordarium/core` | Action / Runtime / Ledger & State ports / Recovery / Operations | `>=24.0.0` |
+| `@ordarium/ledger-sqlite` | 默认 crash-durable local ledger | `>=24.15.0` |
+| `@ordarium/host-kit` | 自建 Host Adapter + conformance | `>=24.0.0` |
+| `@ordarium/host-mcp` | MCP host adapter | `>=24.15.0` |
+| `@ordarium/testing` | fault injection + conformance helpers | `>=24.0.0` |
+
+当前：
+
+```text
+package version           1.3.1 published / 1.3.2 workspace
+HOST_CONTRACT_VERSION     1
+SQLite user_version       4
+OperationRecord schema    2
+StateRecord schema        1
+```
+
+> **`@ordarium/dsh`（legacy / frozen）**：最初的首宿主适配叶包，已冻结——既有消费者继续可用（自 1.3.2 起其公开声明全部带 `@deprecated`，运行时与类型形状零变化），新接入请走 `@ordarium/core` + `@ordarium/host-kit` 或 `@ordarium/host-mcp`。
+
+## Documentation map
+
+```text
+Start       → 先跑起来、先看一次真实故障
+Tutorials   → 端到端完成一种 Provider/Host 接入
+How-to      → 解决具体工程任务
+Recipes     → 套到真实业务场景
+Concepts    → 理解抽象为什么存在
+Reference   → 精确 API / contract / architecture
+Archive     → research / evidence / release history
+```
+
+总入口：[docs/README.md](docs/README.md)
+
+给 coding agents 的精简上下文：[docs/llms.txt](docs/llms.txt)
+
+## Verify
+
+```bash
+pnpm check
+pnpm verify:architecture
+pnpm verify:docs
+```
+
+完整 release gate：
+
+```bash
+pnpm verify:release
+```
+
+<!-- END README.md -->
+
+<!-- BEGIN docs/README.md -->
+
+# Ordarium Documentation
+
+**第一次使用 Ordarium，不要从 Architecture 或 Gxx 历史开始。**
+
+从一个真实问题开始：
+
+> Provider 已经产生副作用，但进程在本地记录成功之前崩了。现在应该 retry、query，还是停止？
+
+## Start here
+
+| 页面 | 你会得到什么 |
+|---|---|
+| [5-minute Quickstart](start/quickstart.md) | 把一段普通 side-effect API call 包进 Ordarium |
+| [Failure Lab](start/failure-lab.md) | 真的制造 crash-after-provider-commit，再观察恢复 |
+| [Choose a profile](start/choose-a-profile.md) | 不背术语，根据 Provider 能力直接选 profile |
+
+推荐顺序：
+
+```text
+Quickstart
+→ Failure Lab
+→ Choose a profile
+→ 一个与你 Provider 匹配的 Tutorial
+```
+
+## Tutorials — build one complete integration
+
+- [Provider supports an idempotency key](tutorials/provider-idempotency-key.md)
+- [Provider supports authoritative reconciliation](tutorials/provider-reconciliation.md)
+- [Provider has no recovery primitive](tutorials/no-recovery-primitive.md)
+- [Build a Host Adapter](tutorials/host-adapter.md)
+
+Tutorial 的目标是“跟着做完”，而不是列 API。
+
+## How-to — solve one engineering task
+
+- [Inspect and resolve an uncertain Operation](how-to/inspect-uncertain-operation.md)
+- [Run multiple workers safely](how-to/run-multiple-workers.md)
+- [Build a custom Ledger](how-to/build-custom-ledger.md)
+- [Store and watch management state](how-to/store-and-watch-state.md)
+
+How-to 假设你已经理解基础概念，只回答“怎么做”。
+
+## Recipes — map Ordarium to real side effects
+
+- [Payments](recipes/payments.md)
+- [Email and messages](recipes/email-and-messages.md)
+- [Issues and tickets](recipes/issues-and-tickets.md)
+- [Cloud resources](recipes/cloud-resources.md)
+- [AI agent tool actions](recipes/ai-tool-actions.md)
+
+Recipe 不会假设某个具体 SaaS 一定具备幂等/查询能力；它会告诉你**如何根据你实际使用的 Provider 能力选择合同**。
+
+## Concepts — understand the mental model
+
+- [Operation identity](concepts/operation-identity.md)
+- [Uncertain](concepts/uncertain.md)
+- [Claim / Lease / Fencing](concepts/claim-lease-fencing.md)
+- [Authorization evidence](concepts/authorization-evidence.md)
+- [Provider capabilities](concepts/provider-capabilities.md)
+
+概念页统一使用：
+
+```text
+The problem
+→ 30-second answer
+→ concrete example
+→ failure behavior
+→ common mistakes
+→ reference links
+```
+
+## Developer reference
+
+现有 `docs/dev/` 保留为 compact developer reference：
+
+- [Developer guide index](dev/README.md)
+- [Getting started](dev/01-getting-started.md)
+- [Core concepts](dev/02-core-concepts.md)
+- [Effect profiles](dev/03-effect-profiles.md)
+- [Errors](dev/04-errors.md)
+- [Authorization](dev/05-authorization.md)
+- [Ledgers](dev/06-ledgers.md)
+- [Operations](dev/07-operations.md)
+- [Hosts](dev/08-hosts.md)
+- [Testing](dev/09-testing.md)
+- [Lifecycle & recovery](dev/10-lifecycle-and-recovery.md)
+- [Management state](dev/11-state.md)
+
+## Normative reference / maintainer docs
+
+- [12 · Product baseline](12-ordarium-product-baseline.md)
+- [13 · Action & runtime contract](13-ordarium-action-contract.md)
+- [14 · Implementation map](14-ordarium-implementation-plan.md)
+- [15 · Architecture](15-ordarium-complete-architecture.md)
+- [16 · Architecture atlas](16-ordarium-mermaid-architecture-atlas.md)
+- [17 · Acceptance contract](17-ordarium-goals-and-acceptance.md)
+- [18 · Compatibility policy](18-release-compat-policy.md)
+- [19 · Release history](19-release-history.md)
+
+这部分是 reference，不是 onboarding。
+
+## Research & evidence
+
+历史材料继续保留：
+
+```text
+docs/research/**
+evidence/**
+```
+
+它们负责 provenance / design history / delivery evidence，不再承担普通开发者教学。
+
+## Coding-agent resources
+
+- [`llms.txt`](llms.txt)：精简索引 + 核心合同
+- [`llms-full.txt`](llms-full.txt)：面向 coding agent 的主文档合并文本，不包含 research/evidence 全量历史
+
+## Machine verification
+
+```text
+pnpm check                build + test
+pnpm test:integration     SQLite / host integration
+pnpm test:conformance     conformance suites
+pnpm test:package         packaged consumer probe
+pnpm verify:architecture  API/schema/package invariants
+pnpm verify:docs          links/fences/README claims
+pnpm verify:release       aggregate release gate
+pnpm verify:matrix        Node matrix
+```
+
+<!-- END docs/README.md -->
+
+<!-- BEGIN docs/start/README.md -->
+
+# Start
+
+第一次接触 Ordarium，只需要完成三页：
+
+1. [Quickstart](quickstart.md) — 把一个普通 API call 变成 durable Action；
+2. [Failure Lab](failure-lab.md) — 故意制造“Provider 已成功、进程却崩了”；
+3. [Choose a profile](choose-a-profile.md) — 根据 Provider 能力选择恢复合同。
+
+完成之后，你应该能够回答：
+
+```text
+为什么需要 stable Operation identity？
+为什么 dispatched 必须先持久化？
+为什么 guarded 不能 blind retry？
+为什么 idempotent 必须真的由 Provider 支持？
+为什么 reconcilable 要先 query？
+为什么 uncertain 不是 error-handling 失败？
+```
+
+如果这些问题已经清楚，再进入 [Tutorials](../README.md#tutorials--build-one-complete-integration) 或 [Reference](../13-ordarium-action-contract.md)。
+
+<!-- END docs/start/README.md -->
+
+<!-- BEGIN docs/start/quickstart.md -->
+
+# Quickstart · Protect one side effect in 5 minutes
+
+这页不先解释 Ordarium 的所有对象。我们只做一件事：**保护一次外部 API 写操作。**
+
+## 0. 你现在有这样的代码
+
+```ts
+async function createTicket(title: string) {
+  return ticketApi.create({ title });
+}
+```
+
+Happy path 没问题。
+
+真正的问题是：
+
+```text
+Provider create 成功
+→ response 丢失 / 进程崩溃
+→ 你的函数没有返回
+→ 上层 retry
+→ 是否又创建一张 ticket？
+```
+
+普通 Promise 的类型回答不了这个问题。
+
+## 1. 把这个调用声明成 Action
+
+```ts
+import {
+  defineAction,
+  effects,
+  schema,
+} from "@ordarium/core";
+
+const createTicket = defineAction({
+  name: "ticket.create",
+  version: "1",
+  description: "Create one support ticket",
+
+  input: schema.object({
+    title: schema.string({ minLength: 1 }),
+  }),
+
+  output: schema.object({
+    id: schema.string(),
+  }),
+
+  effect: effects.idempotent(),
+
+  execute(input, context) {
+    return ticketApi.create(input, {
+      idempotencyKey: context.idempotencyKey,
+      signal: context.signal,
+    });
+  },
+});
+```
+
+这里最重要的不是 `defineAction` 本身，而是：
+
+```text
+effect: effects.idempotent()
+```
+
+这句话只有在 **Provider 真正接受稳定 idempotency key** 时才成立。
+
+如果你的 Provider 没这个能力，先去 [Choose a profile](choose-a-profile.md)，不要照抄。
+
+## 2. 给 Action 一个 durable Runtime
+
+```ts
+import { OrdariumRuntime } from "@ordarium/core";
+import { SqliteLedger } from "@ordarium/ledger-sqlite";
+
+const runtime = new OrdariumRuntime({
+  ledger: new SqliteLedger(
+    "/var/lib/myapp/ordarium.sqlite",
+  ),
+});
+```
+
+现在执行证据不会只存在于当前 JS Promise / 内存变量里。
+
+## 3. 给这次调用稳定 identity
+
+```ts
+const result = await runtime.run(
+  createTicket,
+  { title: "Printer is on fire" },
+  {
+    identity: {
+      source: "support-agent",
+      scope: sessionId,
+      callId: toolCallId,
+    },
+
+    authorization: {
+      decision: "allow",
+      kind: "host-admission",
+      source: "support-agent:tool-admission",
+    },
+  },
+);
+```
+
+默认情况下：
+
+```text
+source + scope + callId
+```
+
+定义 logical work identity。
+
+因此同一 tool call 被 transport replay 时，不会自动变成“另一项工作”。
+
+## 4. Ordarium 多做了什么？
+
+你写的是：
+
+```text
+runtime.run(action, input, identity, authorization)
+```
+
+Runtime 实际维护的是：
+
+```text
+schema parse
+→ ledger capability check
+→ derive stable Operation ID
+→ create/load durable Operation
+→ persist authorization
+→ acquire claim + lease + fencing token
+→ persist dispatched
+→ call Provider
+→ persist terminal result OR uncertainty
+```
+
+最关键的边界：
+
+```text
+persist dispatched
+BEFORE
+Provider side effect
+```
+
+这样进程在 Provider 调用附近死亡时，重启之后不会假装“这项调用从来没发生过”。
+
+## 5. Replay 同一调用
+
+再次使用**同样的 identity 与 input**：
+
+```ts
+await runtime.run(
+  createTicket,
+  { title: "Printer is on fire" },
+  {
+    identity: {
+      source: "support-agent",
+      scope: sessionId,
+      callId: toolCallId,
+    },
+    authorization,
+  },
+);
+```
+
+它会汇合到同一个 durable Operation。
+
+如果你改成不同 input，却仍复用同一 Operation identity，Ordarium 会报 conflict，而不是悄悄把两件事混成一件。
+
+## 6. 现在做真正有价值的实验
+
+Quickstart 的 happy path 只证明代码能跑。
+
+Ordarium 的价值发生在 failure path。
+
+下一页：
+
+[**Failure Lab — crash after Provider commit**](failure-lab.md)
+
+你会故意让进程死在最坏的位置，然后看 recovery 为什么必须根据 Provider capability 分三条路。
+
+<!-- END docs/start/quickstart.md -->
+
+<!-- BEGIN docs/start/failure-lab.md -->
+
+# Failure Lab · Crash after the Provider commits
+
+这是 Ordarium 最重要的入门实验。
+
+目标不是看 happy path，而是制造这个窗口：
+
+```text
+Ordarium: dispatched 已持久化
+        ↓
+Provider: effect 已 durable commit
+        ↓
+💥 Node process 立即退出
+        ↓
+Ordarium: succeeded 还没来得及持久化
+```
+
+然后重启同一调用。
+
+## 先理解为什么这是“最坏位置”
+
+如果 crash 发生在 Provider 调用之前：
+
+```text
+没产生 effect
+→ 很容易恢复
+```
+
+如果 crash 发生在 succeeded 已经持久化之后：
+
+```text
+结果已知
+→ replay 直接读 durable outcome
+```
+
+最困难的是中间：
+
+```text
+external world 可能已经变了
+local world 还没写 terminal truth
+```
+
+Ordarium 的整个 recovery contract 就是为这个窗口服务的。
+
+## 一个可运行的 fake Provider
+
+下面的 Provider 用 JSON 文件模拟“外部系统已经 durable commit”，并按 idempotency key 去重。
+
+```ts
+import { randomUUID } from "node:crypto";
+import { readFile, writeFile } from "node:fs/promises";
+
+const PROVIDER_FILE = "./fake-provider.json";
+
+type ProviderDb = {
+  byKey: Record<string, {
+    chargeId: string;
+    orderId: string;
+    amount: number;
+  }>;
+};
+
+async function readProvider(): Promise<ProviderDb> {
+  try {
+    return JSON.parse(
+      await readFile(PROVIDER_FILE, "utf8"),
+    ) as ProviderDb;
+  } catch {
+    return { byKey: {} };
+  }
+}
+
+async function chargeProvider(
+  input: { orderId: string; amount: number },
+  idempotencyKey: string,
+) {
+  const db = await readProvider();
+
+  const existing = db.byKey[idempotencyKey];
+  if (existing) {
+    console.log("provider: deduplicated", existing);
+    return existing;
+  }
+
+  const created = {
+    chargeId: randomUUID(),
+    ...input,
+  };
+
+  db.byKey[idempotencyKey] = created;
+  await writeFile(
+    PROVIDER_FILE,
+    JSON.stringify(db, null, 2),
+  );
+
+  console.log("provider: COMMITTED", created);
+
+  if (process.env.CRASH_AFTER_PROVIDER === "1") {
+    console.error("💥 process exits after provider commit");
+    process.exit(42);
+  }
+
+  return created;
+}
+```
+
+注意：`process.exit(42)` 发生在 Provider 文件已经写完之后、Action return 之前。
+
+这正是我们要模拟的故障。
+
+## 把它包装成 idempotent Action
+
+```ts
+import {
+  OrdariumRuntime,
+  defineAction,
+  effects,
+  schema,
+} from "@ordarium/core";
+import { SqliteLedger } from "@ordarium/ledger-sqlite";
+
+const charge = defineAction({
+  name: "payment.charge",
+  version: "1",
+  description: "Charge one order",
+
+  input: schema.object({
+    orderId: schema.string(),
+    amount: schema.number(),
+  }),
+
+  output: schema.object({
+    chargeId: schema.string(),
+    orderId: schema.string(),
+    amount: schema.number(),
+  }),
+
+  effect: effects.idempotent(),
+
+  execute(input, context) {
+    return chargeProvider(
+      input,
+      context.idempotencyKey,
+    );
+  },
+});
+
+const runtime = new OrdariumRuntime({
+  ledger: new SqliteLedger("./ordarium-lab.sqlite"),
+  leaseMs: 250,
+});
+
+const identity = {
+  source: "failure-lab",
+  scope: "checkout",
+  callId: "order-42-charge",
+};
+
+const authorization = {
+  decision: "allow" as const,
+  kind: "host-admission" as const,
+  source: "failure-lab",
+};
+
+const result = await runtime.run(
+  charge,
+  { orderId: "order-42", amount: 1999 },
+  { identity, authorization },
+);
+
+console.log("ordarium result:", result);
+await runtime.dispose();
+```
+
+## Run 1 — crash
+
+```bash
+rm -f fake-provider.json ordarium-lab.sqlite*
+
+CRASH_AFTER_PROVIDER=1 node dist/failure-lab.js
+```
+
+你应该看到：
+
+```text
+provider: COMMITTED {...}
+💥 process exits after provider commit
+```
+
+外部 effect 已经存在。
+
+但是 Ordarium 没有机会写 `succeeded`。
+
+## Run 2 — same logical call
+
+等待 lease 过期，然后：
+
+```bash
+sleep 1
+node dist/failure-lab.js
+```
+
+因为 Action 声明 `idempotent()`，normal recovery 可以在有效 operation-key contract 下 **使用同一个 idempotency key redispatch**。
+
+Fake Provider 看到同一个 key：
+
+```text
+provider: deduplicated {...}
+```
+
+不会创建第二笔 charge。
+
+## 现在把 profile 改成 `guarded()`
+
+只改：
+
+```ts
+effect: effects.guarded()
+```
+
+同时让 Provider 忽略 idempotency key。
+
+重复 crash 实验。
+
+第二次 invocation 不应该再次调用 Provider 来“试试看”。
+
+正确结果是：
+
+```text
+OPERATION_UNCERTAIN
+```
+
+因为：
+
+```text
+Provider 可能已经 commit
++
+没有 safe same-key replay
++
+没有 authoritative query
+=
+不能证明第二次 execute 安全
+```
+
+## 再改成 `reconcilable()`
+
+假设 Provider 能按稳定业务键查询：
+
+```ts
+reconcile: async (input) => {
+  const charge = await provider.findByOrderId(input.orderId);
+
+  if (charge) {
+    return {
+      status: "succeeded",
+      value: charge,
+    };
+  }
+
+  return {
+    status: "absent",
+    retrySafe: true,
+  };
+}
+```
+
+Recovery 会：
+
+```text
+query first
+→ Provider says succeeded
+→ persist recovered result
+→ no second charge
+```
+
+## 这个 Lab 真正教了什么
+
+不是“Ordarium 可以 retry”。
+
+而是：
+
+```text
+同一个 crash
+在不同 Provider capability 下
+正确恢复动作完全不同
+```
+
+| Contract | Restart behavior |
+|---|---|
+| `guarded` | 不 blind retry；保持 uncertain |
+| `idempotent` | same-key redispatch |
+| `reconcilable` | query first |
+
+这就是 EffectProfile 存在的原因。
+
+## 下一步
+
+根据你实际 Provider：
+
+- [Idempotency-key tutorial](../tutorials/provider-idempotency-key.md)
+- [Reconciliation tutorial](../tutorials/provider-reconciliation.md)
+- [No recovery primitive tutorial](../tutorials/no-recovery-primitive.md)
+
+<!-- END docs/start/failure-lab.md -->
+
+<!-- BEGIN docs/start/choose-a-profile.md -->
+
+# Choose a profile · Don't memorize the names
+
+不要先问：
+
+> 五个 EffectProfile 分别是什么意思？
+
+先问 Provider 三个具体问题。
+
+## Question 1 — 这个调用会改变外部世界吗？
+
+### 不会
+
+例如：
+
+```text
+read record
+pure calculation
+list resources
+query status
+```
+
+选择：
+
+```ts
+effects.readOnly()
+```
+
+结束。
+
+### 会
+
+继续 Question 2。
+
+---
+
+## Question 2 — Provider 是否真正支持 stable idempotency key？
+
+你需要的是类似这样的真实 Provider contract：
+
+```text
+client sends key K
+Provider durably remembers K
+same K + same operation
+→ same external effect / same result
+```
+
+### 是，而且 window 足够明确
+
+选择：
+
+```ts
+effects.idempotent()
+```
+
+或 finite window：
+
+```ts
+effects.idempotent({
+  window: {
+    kind: "finite",
+    expiresAfterMs: 15 * 60_000,
+  },
+});
+```
+
+去读：
+
+[Provider idempotency-key tutorial](../tutorials/provider-idempotency-key.md)
+
+### 不是 / 不确定
+
+继续 Question 3。
+
+---
+
+## Question 3 — Provider 能否权威查询“这项业务工作是否已经发生”？
+
+关键字是 **权威**。
+
+不是：
+
+```text
+搜日志大概能看到
+list API 可能搜到类似名字
+缓存里没看到
+```
+
+而是：
+
+```text
+通过稳定 external business key / operation key
+能够可靠得到 succeeded / failed / absent / pending
+```
+
+### 能
+
+选择：
+
+```ts
+effects.reconcilable()
+```
+
+并实现 `reconcile()`。
+
+去读：
+
+[Provider reconciliation tutorial](../tutorials/provider-reconciliation.md)
+
+### 不能
+
+选择：
+
+```ts
+effects.guarded()
+```
+
+它的关键语义是：
+
+```text
+一旦 Provider 可能已经执行
+但结果又无法证明
+→ uncertain
+→ 不 blind retry
+```
+
+去读：
+
+[No recovery primitive tutorial](../tutorials/no-recovery-primitive.md)
+
+---
+
+## `unmanaged()` 放在哪里？
+
+`unmanaged()` 不是第 4 个 Provider 能力分支。
+
+它表示：
+
+```text
+我明确退出 managed crash/restart guarantee
+```
+
+典型用途：
+
+- 渐进迁移；
+- 临时兼容路径；
+- 你明确接受弱保证的内部调用。
+
+不要把它当成“更快、更简单的生产副作用 profile”。
+
+---
+
+## 一张表
+
+| Provider 现实能力 | Profile | Crash 后核心动作 |
+|---|---|---|
+| 无副作用 | `readOnly` | 可重新执行 |
+| 有副作用，无 key、无 query | `guarded` | 不确定则停在 `uncertain` |
+| 有 stable key | `idempotent` | 在有效 window 内 same-key redispatch |
+| 有 authoritative query | `reconcilable` | query first |
+| 明确退出 managed guarantee | `unmanaged` | 不提供 managed recovery |
+
+## 最常见错误
+
+### “HTTP POST 不是幂等，所以 guarded；PUT 是幂等，所以 idempotent”
+
+错。
+
+Effect profile 看的是 **Provider 的实际 durable contract**，不是 HTTP method 名字。
+
+### “我自己内存里记了一个 Set，所以 idempotent”
+
+错。
+
+进程 crash 以后那个 Set 就不存在了。
+
+### “Provider query 99% 能搜到，所以 reconcilable”
+
+如果“没搜到”不能权威证明 absence，就不能把它当 authoritative reconciliation。
+
+### “遇到 uncertain 就换 callId 再调用一次”
+
+这等于绕过去重边界重新制造一项副作用工作，通常正是你最不应该做的事。
+
+<!-- END docs/start/choose-a-profile.md -->
+
+<!-- BEGIN docs/tutorials/README.md -->
+
+# Tutorials
+
+Tutorial 的目标是：**跟着做完一个完整接入**。
+
+- [Provider has an idempotency key](provider-idempotency-key.md)
+- [Provider can be reconciled](provider-reconciliation.md)
+- [Provider has no recovery primitive](no-recovery-primitive.md)
+- [Build a Host Adapter](host-adapter.md)
+
+如果你还没有亲眼看过 crash-after-provider-commit，先做 [Failure Lab](../start/failure-lab.md)。
+
+<!-- END docs/tutorials/README.md -->
+
+<!-- BEGIN docs/tutorials/provider-idempotency-key.md -->
+
+# Tutorial · Provider has an idempotency key
+
+适用场景：Provider 明确承诺，同一个稳定 key 在其有效期内不会重复产生业务 effect。
+
+典型思路：
+
+```text
+Ordarium Operation
+      │
+      └─ stable context.idempotencyKey
+                 │
+                 ▼
+             Provider
+```
+
+## 1. 先确认 Provider contract
+
+在写代码前，确认文档/接口合同至少回答：
+
+```text
+key 是否 durable？
+同 key + 同 request 是否返回同一结果？
+key 有效多久？
+同 key + 不同 request 怎么处理？
+```
+
+如果你不知道 window，就不要随便假设 durable forever。
+
+## 2. Durable window
+
+```ts
+const action = defineAction({
+  // ...
+  effect: effects.idempotent(),
+  execute(input, context) {
+    return provider.create(input, {
+      idempotencyKey: context.idempotencyKey,
+    });
+  },
+});
+```
+
+## 3. Finite window
+
+如果 Provider 只保证 24 小时：
+
+```ts
+effect: effects.idempotent({
+  window: {
+    kind: "finite",
+    expiresAfterMs: 24 * 60 * 60 * 1000,
+  },
+})
+```
+
+Ordarium 在 Operation 第一次创建时冻结 deadline。
+
+```text
+restart
+replay
+takeover
+```
+
+都不会延长它。
+
+## 4. Stable invocation identity 仍然必需
+
+Provider idempotency key 不是 Host invocation identity 的替代品。
+
+Host 仍应提供：
+
+```ts
+identity: {
+  source: "checkout-api",
+  scope: cartId,
+  callId: requestId,
+}
+```
+
+Ordarium 使用 Operation identity 来判断“是不是同一项逻辑工作”，然后把稳定 `context.idempotencyKey` 交给 Provider。
+
+## 5. Crash recovery
+
+发生：
+
+```text
+persist dispatched
+→ Provider commits
+→ response lost / process crash
+```
+
+若没有 `reconcile()`，normal recovery 检查：
+
+```text
+operation key usable?
+finite deadline still valid?
+```
+
+满足后才 same-key redispatch。
+
+## 6. 必须测试
+
+- same identity / same input replay；
+- same identity / different input conflict；
+- crash after dispatch；
+- Provider 收到的 key 在 recovery 中完全相同；
+- finite deadline 过期后不 redispatch；
+- Provider 自己对 same key / different request 的冲突行为。
+
+## 7. 不要这么做
+
+### 每次 retry 生成一个新 key
+
+这会直接破坏 Provider 侧去重。
+
+### 用 Action input hash 临时当 Provider key，却没有稳定 Operation identity
+
+你可能把本来不同的业务操作错误合并，也可能让 replay 无法汇合。
+
+### Provider 只做“短时间缓存去重”，文档却写 `effects.idempotent()` 默认 durable window
+
+如果 Provider window 有限，就显式建模 finite window。
+
+## Next
+
+想亲眼看 crash + same-key recovery：
+
+[Failure Lab](../start/failure-lab.md)
+
+<!-- END docs/tutorials/provider-idempotency-key.md -->
+
+<!-- BEGIN docs/tutorials/provider-reconciliation.md -->
+
+# Tutorial · Provider can be queried authoritatively
+
+适用场景：Provider 可以通过稳定外部键回答：
+
+```text
+这项业务工作已经成功了吗？
+失败了吗？
+不存在吗？
+还在处理中吗？
+```
+
+## Example: create a resource by stable external name
+
+```ts
+const provision = defineAction({
+  name: "cloud.instance.create",
+  version: "1",
+  description: "Create one instance",
+
+  input: schema.object({
+    requestId: schema.string(),
+    region: schema.string(),
+  }),
+
+  output: schema.object({
+    instanceId: schema.string(),
+  }),
+
+  effect: effects.reconcilable(),
+
+  async execute(input) {
+    return provider.createInstance({
+      externalName: `ordarium-${input.requestId}`,
+      region: input.region,
+    });
+  },
+
+  async reconcile(input) {
+    const found = await provider.findByExternalName(
+      `ordarium-${input.requestId}`,
+    );
+
+    if (found.status === "ready") {
+      return {
+        status: "succeeded",
+        value: { instanceId: found.id },
+      };
+    }
+
+    if (found.status === "failed") {
+      return {
+        status: "failed",
+        error: {
+          code: "PROVISION_FAILED",
+          message: "Provider reports provisioning failure",
+        },
+      };
+    }
+
+    if (found.status === "creating") {
+      return { status: "pending" };
+    }
+
+    return {
+      status: "absent",
+      retrySafe: true,
+    };
+  },
+});
+```
+
+## 为什么必须是 authoritative query？
+
+不能把：
+
+```text
+list API 没搜到
+日志里没看到
+cache miss
+搜索结果暂时为空
+```
+
+自动解释为：
+
+```text
+absent + retrySafe
+```
+
+只有 Provider contract 真正支持“这个稳定 key 不存在 = 这项工作未发生”，才可以这样返回。
+
+## `pending` 与 `unknown`
+
+如果 Provider 明确说“仍在处理”：
+
+```ts
+{ status: "pending" }
+```
+
+如果 Provider response 无法支持确定判断：
+
+```ts
+{ status: "unknown" }
+```
+
+两者都不应该被伪装成 `failed`。
+
+## `absent` 为什么还有 `retrySafe`？
+
+即使权威确认“当前没有结果”，也不一定代表立刻重做安全。
+
+例如：
+
+```text
+Provider 最终一致性查询显示 absent
+但旧 request 仍可能在另一个 queue 中执行
+```
+
+这时：
+
+```ts
+{ status: "absent", retrySafe: false }
+```
+
+## Optional: query + same-key fallback
+
+如果 Provider 同时提供：
+
+```text
+authoritative query
++
+stable idempotency key
+```
+
+可以声明 `idempotencyWindow`：
+
+```ts
+effects.reconcilable({
+  idempotencyWindow: { kind: "durable" },
+})
+```
+
+Recovery 仍先 query；只有 evidence 允许时才 same-key redispatch。
+
+## Operator recovery
+
+`reconcileOnly` 只 query：
+
+```text
+never execute
+never redispatch
+```
+
+适合 on-call / admin console 处理 production uncertain Operation。
+
+见 [Inspect uncertain](../how-to/inspect-uncertain-operation.md)。
+
+<!-- END docs/tutorials/provider-reconciliation.md -->
+
+<!-- BEGIN docs/tutorials/no-recovery-primitive.md -->
+
+# Tutorial · Provider has no safe recovery primitive
+
+有些 Provider 就是：
+
+```text
+会产生副作用
+但没有 stable idempotency key
+也没有 authoritative query
+```
+
+这不是 Ordarium 无法支持的情况。
+
+它意味着**恢复能力本来就有限**。
+
+## Use `guarded()`
+
+```ts
+const send = defineAction({
+  name: "legacy.message.send",
+  version: "1",
+  description: "Send one legacy message",
+  input: schema.object({
+    recipient: schema.string(),
+    body: schema.string(),
+  }),
+  output: schema.object({
+    providerId: schema.string(),
+  }),
+
+  effect: effects.guarded(),
+
+  execute(input) {
+    return legacyProvider.send(input);
+  },
+});
+```
+
+## Happy path
+
+正常调用仍然可以：
+
+```text
+proposed
+→ authorized
+→ claimed
+→ dispatched
+→ Provider returns success
+→ succeeded
+```
+
+## Hard failure path
+
+真正的差异发生在：
+
+```text
+dispatched
+→ Provider may have committed
+→ local result is lost
+```
+
+此时没有证据支持：
+
+```text
+retry is safe
+```
+
+所以正确恢复结果是：
+
+```text
+uncertain
+```
+
+## Host 应该怎么处理 uncertain？
+
+常见策略：
+
+- 提示 operator；
+- 等待外部人工确认；
+- 通过另一个业务系统获得新 evidence；
+- 保留 Operation，阻止自动 blind retry。
+
+不要：
+
+```text
+catch OPERATION_UNCERTAIN
+→ new callId
+→ execute again
+```
+
+那只是绕过同一 Operation 的安全边界。
+
+## `guarded` 的价值是什么？
+
+它不是“保证不会重复”。
+
+它保证的是：
+
+```text
+系统不会在证据不足时把 retry 假装成安全动作
+```
+
+这比“自动重试一切”更接近真实世界。
+
+## 如果以后 Provider 增加恢复能力
+
+- 新增 stable key → 考虑新 Action version + `idempotent`；
+- 新增 authoritative query → 考虑新 Action version + `reconcilable`。
+
+不要在同一个 Action version 下悄悄改变 effect contract。
+
+<!-- END docs/tutorials/no-recovery-primitive.md -->
+
+<!-- BEGIN docs/tutorials/host-adapter.md -->
+
+# Tutorial · Build a Host Adapter
+
+目标：把你自己的 Tool / Agent / RPC 系统映射到 Ordarium，而不把宿主类型塞进 `@ordarium/core`。
+
+## 1. Host 保留原生 pipeline
+
+假设你的宿主收到：
+
+```ts
+type HostToolCall = {
+  sessionId: string;
+  callId: string;
+  tool: string;
+  arguments: unknown;
+  actor?: string;
+};
+```
+
+不要把这个类型加入 Ordarium core。
+
+## 2. Map to HostInvocation
+
+```ts
+const invocation = {
+  identity: {
+    source: "my-host",
+    scope: call.sessionId,
+    callId: call.callId,
+    ...(call.actor ? { actor: call.actor } : {}),
+  },
+
+  authorization: {
+    decision: "allow" as const,
+    kind: "host-admission" as const,
+    source: "my-host:tool-pipeline",
+  },
+
+  signal: abortController.signal,
+};
+```
+
+## 3. Invoke through the port
+
+```ts
+const result = await runtime.invoke(
+  action,
+  call.arguments,
+  invocation,
+);
+```
+
+宿主继续负责：
+
+```text
+which tool
+input admission
+human/policy approval
+credentials
+sandbox
+session
+rendering
+```
+
+Ordarium 只从 port 之后接管 effect execution boundary。
+
+## 4. Version handshake
+
+```ts
+import {
+  HOST_CONTRACT_VERSION,
+  assertHostContract,
+} from "@ordarium/host-kit";
+
+assertHostContract(HOST_CONTRACT_VERSION);
+```
+
+真实 adapter 应固定自己编译时针对的 contract version，而不是把 Runtime 当前值原样回传来“永远通过”。
+
+## 5. Provider principal
+
+如果 credential recovery 可能解析到不同账户，宿主应提供稳定 principal reference：
+
+```ts
+providerPrincipalRef: {
+  namespace: "provider-x",
+  subject: accountId,
+}
+```
+
+Ordarium 只持久化 digest，不持久化 credential。
+
+## 6. Conformance
+
+通过 `@ordarium/host-kit` 的 portable runner 验证：
+
+```text
+stable identity
+classified authorization
+cancellation
+error mapping
+principal continuity
+lifecycle
+```
+
+## 7. 一个常见错误
+
+错误：
+
+```text
+transport retry
+→ host generates fresh callId
+→ Ordarium sees a new Operation
+```
+
+正确做法是尽可能把宿主原生稳定 delivery/call identity 映射进 `callId`。
+
+## Existing adapters
+
+- `@ordarium/host-mcp`：当前具体非 legacy adapter；
+
+<!-- END docs/tutorials/host-adapter.md -->
+
+<!-- BEGIN docs/how-to/README.md -->
+
+# How-to
+
+How-to 假设你已经理解基础模型，只回答一个具体工程问题。
+
+- [Inspect and resolve an uncertain Operation](inspect-uncertain-operation.md)
+- [Run multiple workers safely](run-multiple-workers.md)
+- [Build a custom Ledger](build-custom-ledger.md)
+- [Store and watch management state](store-and-watch-state.md)
+
+<!-- END docs/how-to/README.md -->
+
+<!-- BEGIN docs/how-to/inspect-uncertain-operation.md -->
+
+# How-to · Inspect and resolve an uncertain Operation
+
+你已经在生产上看到：
+
+```text
+OPERATION_UNCERTAIN
+```
+
+这页只回答：现在怎么处理。
+
+## 1. 创建 Operations service
+
+```ts
+import { createOperations } from "@ordarium/core";
+
+const operations = createOperations({ runtime });
+```
+
+如果只需要 inspect/list/history，可以只绑定 ledger。
+
+## 2. 准备可信 OperatorAuthorization
+
+```ts
+const auth = {
+  operator: "oncall@example.com",
+  source: "admin-console",
+  grantedAt: new Date().toISOString(),
+  scope: "operations:reconcile" as const,
+};
+```
+
+不要从 model/tool input 构造这个对象。
+
+## 3. Inspect
+
+```ts
+const view = await operations.inspect(
+  operationId,
+  auth,
+);
+```
+
+重点看：
+
+```text
+actionName / actionVersion
+effectKind
+state
+attempts
+identity
+authorization
+uncertainty
+receipt
+```
+
+## 4. 如果 Action 支持 reconcile
+
+```ts
+await operations.reconcileOnly({
+  operationId,
+  action,
+  input,
+  identity,
+  authorization: auth,
+  providerPrincipalRef,
+});
+```
+
+注意：
+
+```text
+reconcileOnly NEVER executes Action.execute()
+```
+
+它只获取/持久化外部 evidence。
+
+## 5. 如果仍然 uncertain
+
+这不是 API 调用失败，而是外部事实仍不足。
+
+此时可做：
+
+- 人工确认 Provider 后台；
+- 等待外部系统新 evidence；
+- 记录 operator resolution；
+- 保留原 Operation 作为审计链。
+
+不要通过新 callId 自动再做一遍副作用。
+
+## 6. 查历史
+
+```ts
+const history = await operations.history(
+  operationId,
+  undefined,
+  100,
+  auth,
+);
+```
+
+用它判断 Operation 曾经到达：
+
+```text
+authorized?
+claimed?
+dispatched?
+uncertain?
+reconciled?
+```
+
+LiveLease heartbeat 不会污染 semantic history。
+
+<!-- END docs/how-to/inspect-uncertain-operation.md -->
+
+<!-- BEGIN docs/how-to/run-multiple-workers.md -->
+
+# How-to · Run multiple workers safely
+
+场景：两个进程可能同时收到同一个 logical call。
+
+目标不是“两个都跑得快”，而是：
+
+```text
+同一 Operation 在一个时刻只有一个有效执行所有者
+```
+
+## 1. 使用支持部署拓扑的 Ledger
+
+本机多进程：
+
+```ts
+const runtime = new OrdariumRuntime({
+  ledger: new SqliteLedger(dbPath),
+  deploymentCoordination: "local-multi-process",
+});
+```
+
+不要用 `MemoryLedger` 声称跨进程协调。
+
+## 2. 所有 worker 必须共享同一 stable Operation identity
+
+```ts
+identity: {
+  source: "queue-consumer",
+  scope: queueName,
+  callId: deliveryId,
+}
+```
+
+如果每个 worker 自己随机生成 callId，它们当然会变成不同 Operation。
+
+## 3. Ordarium 的 ownership primitive
+
+Claim acquisition 同时产生：
+
+```text
+owner
+fencingToken
+live lease
+```
+
+另一个 worker 遇到 live foreign lease 时不会同时拥有执行权。
+
+## 4. Lease expiry 后 takeover
+
+Worker A crash：
+
+```text
+lease 不再续期
+→ expires
+```
+
+Worker B 可以用更高 fencing token take over。
+
+旧 Worker A 即使后来“复活”，也不能用旧 fence 成功写 semantic terminal state。
+
+## 5. 调优 leaseMs
+
+Lease 太长：
+
+```text
+crash 后 takeover 慢
+```
+
+Lease 太短：
+
+```text
+慢 Provider 调用更容易发生 lease pressure
+```
+
+不要只根据平均延迟设置；至少考虑 tail latency 与宿主暂停/GC。
+
+## 6. 测试矩阵
+
+必须测试：
+
+- 两个 worker 同时 claim；
+- live lease 下第二 worker busy；
+- lease expiry takeover；
+- stale worker terminal write 被 fence；
+- crash after dispatch + takeover；
+- same Operation identity 下 Provider 不被不安全重复调用。
+
+`@ordarium/testing` 与 SQLite integration tests 应覆盖这些行为。
+
+<!-- END docs/how-to/run-multiple-workers.md -->
+
+<!-- BEGIN docs/how-to/build-custom-ledger.md -->
+
+# How-to · Build a custom Ledger
+
+只有在你已经有合适的 durable store、或 SQLite 不满足部署要求时才做这件事。
+
+## 1. 实现 Port，不复制 Runtime
+
+实现 `OperationLedger`：
+
+```text
+get / create / compareAndSet
+claim / lease / renewLease
+history / list
+state CAS / history / refs / list
+close?
+```
+
+如果支持 change feed，还要实现对应 capability/method。
+
+不要在 Ledger 内重新实现一套 effect/recovery policy。
+
+## 2. Capability 必须诚实
+
+例如：
+
+```ts
+readonly capabilities = {
+  durability: "crash-durable",
+  coordination: "single-process-exclusive",
+  semanticCas: true,
+  liveLease: true,
+  semanticHistory: true,
+  stateRevisions: true,
+  stateChangeFeed: false,
+} as const;
+```
+
+如果后端不能证明 local-multi-process coordination，就不要声明它。
+
+## 3. Claim 必须原子化
+
+核心要求：
+
+```text
+semantic claim
++
+live lease acquisition
+```
+
+必须作为一个不可分割的所有权决策。
+
+否则两个 worker 可能都以为自己赢了。
+
+## 4. Lease heartbeat 不得产生 semantic history
+
+`renewLease()` 只更新 liveness。
+
+不要：
+
+```text
+heartbeat
+→ semanticRevision + 1
+→ append business history
+```
+
+## 5. State CAS
+
+`expectedRevision = 0`：创建；
+
+`expectedRevision = n`：只有 current revision == n 才写 n+1。
+
+Refs 必须在 commit 前保持 structural validity。
+
+## 6. Cursor semantics
+
+Pagination/change cursor 是 public behavior contract。
+
+定义并测试：
+
+```text
+stable order
+resume semantics
+malformed cursor
+future cursor
+page limit
+concurrent writes behavior
+```
+
+## 7. Run conformance
+
+TypeScript 编译通过不算完成。
+
+用 `@ordarium/testing` 的 ledger/state conformance 跑完整行为矩阵。
+
+只有通过行为测试以后，才把你的 capability 声明当作真实 guarantee。
+
+<!-- END docs/how-to/build-custom-ledger.md -->
+
+<!-- BEGIN docs/how-to/store-and-watch-state.md -->
+
+# How-to · Store and watch management state
+
+场景：你的 Host / Project Runtime 需要保存：
+
+```text
+project head
+peer inbox cursor
+subscription state
+coordination intent
+configuration revision
+```
+
+这些不是 Action execution outcome，而是 Host 自己定义的 durable state。
+
+## 1. Create StateStore
+
+```ts
+const state = createStateStore({ runtime });
+```
+
+绑定 runtime 时，write 会遵守 runtime quiesce/close gate。
+
+## 2. Create one subject
+
+```ts
+const first = await state.write({
+  namespace: "project",
+  key: "head",
+  expectedRevision: 0,
+  value: { revision: "abc123" },
+  identity,
+});
+```
+
+## 3. Update with CAS
+
+```ts
+const next = await state.write({
+  namespace: "project",
+  key: "head",
+  expectedRevision: first.revision,
+  value: { revision: "def456" },
+  identity,
+});
+```
+
+如果别人已经写了新 revision：
+
+```text
+STATE_REVISION_CONFLICT
+```
+
+正确做法：reload → re-evaluate → 再决定是否提交。
+
+## 4. Add structural refs
+
+```ts
+refs: [
+  { kind: "operation", id: operationId },
+  { kind: "state", id: "project/config@7" },
+]
+```
+
+Ordarium 只保证 ref target 存在。
+
+它不会自动解释：
+
+```text
+这个 ref 是依赖？
+是 authority？
+要不要级联 invalidation？
+```
+
+## 5. Watch changes
+
+```ts
+let cursor: string | undefined;
+
+while (true) {
+  const page = await state.changes(
+    { namespace: "project", limit: 100 },
+    cursor,
+  );
+
+  for (const record of page.changes) {
+    await consume(record);
+  }
+
+  cursor = page.cursor;
+  await persistCursor(cursor);
+
+  if (!page.hasMore) break;
+}
+```
+
+## 6. Consumer idempotency
+
+Change feed 的设计目标是：
+
+```text
+at-least-once observation
++
+durable resume cursor
+```
+
+Consumer 自己应该能够重复处理同一 revision，或用 `(namespace,key,revision)` 去重。
+
+## 7. Cursor safety
+
+不要：
+
+```text
+INVALID_CURSOR
+→ silently reset to beginning
+```
+
+这会把 deployment/store mismatch 隐藏掉。
+
+把 cursor reset 作为显式 operator policy。
+
+<!-- END docs/how-to/store-and-watch-state.md -->
+
+<!-- BEGIN docs/recipes/README.md -->
+
+# Recipes
+
+Recipe 把 Ordarium 套到常见 side-effect 形状上。
+
+- [Payments](payments.md)
+- [Email and messages](email-and-messages.md)
+- [Issues and tickets](issues-and-tickets.md)
+- [Cloud resources](cloud-resources.md)
+- [AI agent tool actions](ai-tool-actions.md)
+
+这些页面不会假设某个具体 SaaS 永远具备某项 guarantee；请以你实际 Provider 的当前合同为准。
+
+<!-- END docs/recipes/README.md -->
+
+<!-- BEGIN docs/recipes/payments.md -->
+
+# Recipe · Payments
+
+Payment 是最典型的“不能靠普通 retry 猜”的副作用。
+
+## Provider 有 stable idempotency key
+
+首选：
+
+```ts
+effects.idempotent({
+  window: { kind: "durable" },
+})
+```
+
+或按真实 Provider 合同声明 finite window。
+
+把：
+
+```text
+context.idempotencyKey
+```
+
+原样传给 Provider。
+
+## Provider 支持按 merchant order / external reference 查询
+
+可以考虑：
+
+```ts
+effects.reconcilable()
+```
+
+`reconcile()` 必须能权威区分：
+
+```text
+succeeded
+failed
+pending
+absent
+unknown
+```
+
+## Provider 两者都没有
+
+使用：
+
+```ts
+effects.guarded()
+```
+
+Crash 后无法证明结果时保持 `uncertain`，交给 operator/human follow-up。
+
+## 不要做
+
+- timeout 后自动生成新 idempotency key；
+- 把 HTTP 500 直接解释成“没扣款”；
+- 用新 callId 绕开 uncertain Operation；
+- 把非权威 transaction list search 当 reconcile truth。
+
+<!-- END docs/recipes/payments.md -->
+
+<!-- BEGIN docs/recipes/email-and-messages.md -->
+
+# Recipe · Email and message sending
+
+“发消息”看起来简单，但 duplicate 很容易被用户直接看到。
+
+## 先查 Provider 能力
+
+可能出现三种情况：
+
+### Provider 支持 client message key / dedupe key
+
+```ts
+effects.idempotent()
+```
+
+### Provider 能按稳定 message/business key 权威查询 delivery/create 状态
+
+```ts
+effects.reconcilable()
+```
+
+### Provider 只有 `send()`，没有可靠 dedupe/query
+
+```ts
+effects.guarded()
+```
+
+Response lost 后不要自动再发一封“同样的邮件”。
+
+## Business key
+
+如果“同一个通知”跨多个 host session 都应该视为同一业务工作，可以考虑 Action `key()`：
+
+```ts
+key: (input) =>
+  `invoice-reminder:${input.invoiceId}:${input.kind}`
+```
+
+但这是业务语义决定，不是所有邮件都应该全局去重。
+
+## Common mistake
+
+```text
+subject + recipient 相同
+→ assume same Operation
+```
+
+通常过强。两个不同时间点的合法通知可能内容相同。
+
+<!-- END docs/recipes/email-and-messages.md -->
+
+<!-- BEGIN docs/recipes/issues-and-tickets.md -->
+
+# Recipe · Issues and tickets
+
+创建 issue/ticket 常见风险：
+
+```text
+Host retry
+→ 创建两张重复工单
+```
+
+## 有 Provider idempotency key
+
+直接按 Provider contract 使用 `idempotent`。
+
+## 没有 key，但能按 stable external reference 查询
+
+例如你的系统可以给每张工单带一个稳定 external reference，并且 Provider 能**权威**按它查询：
+
+```ts
+effects.reconcilable()
+```
+
+### Important
+
+“全文搜索标题里有没有 `[order-42]`”通常不是足够强的 authoritative query，除非 Provider 明确保证唯一性/一致性。
+
+## 两者都没有
+
+使用 `guarded`。
+
+如果 crash 后结果不明，不要自动创建第二张。
+
+## Identity design
+
+如果一个宿主 tool call 就对应一张 ticket：
+
+```text
+source + scope + callId
+```
+
+通常够用。
+
+如果多个 session 都可能触发“同一个业务 ticket”，再考虑 Action `key()`。
+
+<!-- END docs/recipes/issues-and-tickets.md -->
+
+<!-- BEGIN docs/recipes/cloud-resources.md -->
+
+# Recipe · Cloud resource creation
+
+创建 VM / bucket / deployment / job 这类资源时，最实用的 recovery seam 往往是一个稳定 external name/reference。
+
+## Recommended pattern
+
+```text
+Operation identity
+→ derive/stash stable external name
+→ Provider create
+→ reconcile by exact external name
+```
+
+如果 Provider 对 external name 唯一性与查询语义足够强：
+
+```ts
+effects.reconcilable()
+```
+
+## Example
+
+```ts
+const externalName =
+  `ordarium-${input.requestId}`;
+```
+
+`execute()` 用这个名字创建。
+
+`reconcile()` 用同一个名字查：
+
+```text
+ready    → succeeded
+failed   → failed
+creating → pending
+absent   → absent + retrySafe?（取决于 Provider contract）
+```
+
+## Delete / cleanup 是另一项 Action
+
+不要把 create Operation 的 recovery 与资源 cleanup 混成一个隐式补偿。
+
+如果需要 delete：
+
+```text
+resource.create@1
+resource.delete@1
+```
+
+通常应该是两个独立 Action contract。
+
+<!-- END docs/recipes/cloud-resources.md -->
+
+<!-- BEGIN docs/recipes/ai-tool-actions.md -->
+
+# Recipe · AI agent tool actions
+
+LLM / Agent 场景里，tool call 很容易因为：
+
+```text
+session replay
+agent retry
+subagent transport retry
+host reconnect
+```
+
+被再次投递。
+
+Ordarium 的价值不是替你决定“Agent 该调用哪个 tool”，而是保护**已经决定要执行的 side effect**。
+
+## Host mapping
+
+```text
+Agent chooses tool
+→ Host validates arguments / policy
+→ Host constructs stable InvocationIdentity
+→ Ordarium Action boundary
+→ Provider
+```
+
+## Identity
+
+尽量使用 Host 原生的 stable tool-call/delivery ID：
+
+```ts
+identity: {
+  source: "agent-host",
+  scope: conversationId,
+  callId: toolCallId,
+}
+```
+
+Transport replay 不应重新随机生成 callId。
+
+## Authorization
+
+“模型输出了 tool call”最多说明：
+
+```text
+host-admission
+```
+
+它**不自动等于**：
+
+```text
+human-approval
+```
+
+如果某个 tool 需要人工确认，Host 必须先完成自己的 approval pipeline，再注入正确分类的 evidence。
+
+## Profile examples
+
+```text
+web search                    → readOnly
+send external message         → guarded / idempotent / reconcilable
+create ticket                 → depends on Provider
+charge payment                → depends on Provider
+update local cache only       → maybe unmanaged/readOnly depending semantics
+```
+
+Profile 由 Provider capability 决定，不由“这是 AI tool”决定。
+
+## Palimpsest / multi-agent runtime
+
+更高层 runtime 可以使用 Ordarium 的：
+
+```text
+Operations
+StateStore
+StateChangeFeed
+```
+
+构建 project / commitment / federation / monitor 等语义。
+
+这些语义仍然属于上层，不进入 Ordarium kernel。
+
+<!-- END docs/recipes/ai-tool-actions.md -->
+
+<!-- BEGIN docs/concepts/README.md -->
+
+# Concepts
+
+Concept page 统一回答：
+
+```text
+The problem
+→ 30-second answer
+→ concrete example
+→ failure behavior
+→ common mistakes
+→ reference
+```
+
+- [Operation identity](operation-identity.md)
+- [Uncertain](uncertain.md)
+- [Claim / Lease / Fencing](claim-lease-fencing.md)
+- [Authorization evidence](authorization-evidence.md)
+- [Provider capabilities](provider-capabilities.md)
+
+<!-- END docs/concepts/README.md -->
+
+<!-- BEGIN docs/concepts/operation-identity.md -->
+
+# Concept · Operation identity
+
+## The problem
+
+同一个真实业务动作可能被 Host 投递多次：
+
+```text
+network retry
+session replay
+queue redelivery
+subagent transport retry
+process restart
+```
+
+如果每次 delivery 都直接执行 Provider，你没有 durable basis 判断它们是不是同一项工作。
+
+## 30-second answer
+
+Ordarium 把：
+
+```text
+Invocation
+```
+
+映射为稳定：
+
+```text
+Operation
+```
+
+默认 logical key：
+
+```text
+source + scope + callId
+```
+
+Operation ID 还绑定：
+
+```text
+Action name + Action version
+```
+
+所以“同一 delivery 的 replay”可以汇合，而不同 Action version 不会悄悄共用 durable history。
+
+## Example
+
+```text
+Invocation A: session=42, call=7
+Invocation B: session=42, call=7
+
+        A ─┐
+           ├→ Operation op_xxx
+        B ─┘
+```
+
+如果 B 的 input 与 A 不同：
+
+```text
+OPERATION_CONFLICT
+```
+
+而不是把两个不同请求合在一起。
+
+## Custom business key
+
+Action 可以定义：
+
+```ts
+key: (input) =>
+  `invoice:${input.invoiceId}:charge`
+```
+
+这样跨 session 的不同 Invocation 也可以被定义成同一项业务工作。
+
+这是非常强的语义选择。
+
+不要为了“提高去重率”随便写 custom key。
+
+## Failure behavior
+
+Operation identity 是 recovery 的锚：
+
+```text
+restart
+→ load same Operation
+→ inspect durable state
+→ decide query / same-key retry / uncertain
+```
+
+如果重启时 Host 生成了新 callId，本来应该恢复的工作就会变成一个新 Operation。
+
+## Common mistakes
+
+- 把 random UUID 当 replay-stable callId；
+- 把 input hash 直接当业务 key，却忽略“相同 input 也可能是两项不同合法工作”；
+- 在同一个 Action version 下改变业务意义；
+- 遇到 `uncertain` 后换新 callId 重新做一遍。
+
+## Reference
+
+- [Core concepts](../dev/02-core-concepts.md)
+- [Action contract](../13-ordarium-action-contract.md)
+
+<!-- END docs/concepts/operation-identity.md -->
+
+<!-- BEGIN docs/concepts/uncertain.md -->
+
+# Concept · `uncertain`
+
+## The problem
+
+外部系统已经可能发生副作用，但本地没有足够证据确定结果。
+
+经典窗口：
+
+```text
+persist dispatched
+→ Provider commits
+→ response lost / process crash
+→ no local terminal record
+```
+
+## 30-second answer
+
+`uncertain` 的意思是：
+
+> 当前 durable evidence 不足以证明 succeeded，也不足以证明 failed；因此 Runtime 不能安全决定下一次 side-effect action。
+
+它不是：
+
+```text
+failed 的别名
+retry later 的别名
+异常处理没写完
+```
+
+## Why not just mark failed?
+
+因为：
+
+```text
+local response missing
+!=
+external effect did not happen
+```
+
+把 unknown 写成 failed，会让后续 retry 看起来合理，从而可能重复产生副作用。
+
+## Why not just retry?
+
+是否能 retry 取决于 Provider capability：
+
+```text
+stable idempotency key?
+→ maybe same-key redispatch
+
+authoritative query?
+→ reconcile first
+
+neither?
+→ stay uncertain
+```
+
+## What the Host should do
+
+根据业务选择：
+
+- 自动 reconcile；
+- 等待 Provider 异步状态；
+- operator inspection；
+- human confirmation；
+- 保持 blocked。
+
+Ordarium 不替 Host 定义业务 escalation policy。
+
+## How uncertainty gets resolved
+
+可能通过：
+
+```text
+Provider reconcile says succeeded
+Provider reconcile says failed
+Provider says authoritative absent + retrySafe
+```
+
+或由更高层系统/人工获得新的可信 evidence。
+
+## Common mistake
+
+```ts
+try {
+  await run();
+} catch (e) {
+  if (e.code === "OPERATION_UNCERTAIN") {
+    return runAgainWithNewCallId();
+  }
+}
+```
+
+这通常等于绕过安全边界。
+
+## See it happen
+
+[Failure Lab](../start/failure-lab.md)
+
+<!-- END docs/concepts/uncertain.md -->
+
+<!-- BEGIN docs/concepts/claim-lease-fencing.md -->
+
+# Concept · Claim, Lease, and Fencing
+
+## The problem
+
+两个 worker 同时收到同一 Operation：
+
+```text
+Worker A ─┐
+          ├→ same Operation
+Worker B ─┘
+```
+
+仅靠“先查数据库再执行”不能安全解决竞争，因为 check 与 execute 之间仍有 race。
+
+## 30-second answer
+
+Ordarium 把执行所有权建模成：
+
+```text
+semantic claim
++
+live lease
++
+monotonic fencing token
+```
+
+三者解决不同问题。
+
+## Claim
+
+Claim 是 semantic record 的一部分：
+
+```text
+谁获得了执行权
+从哪个 durable state 接手
+使用哪个 fencing token
+```
+
+## Lease
+
+Lease 表示“这个 owner 现在还活着”。
+
+它会续期，但 heartbeat 不应该污染 semantic history。
+
+```text
+lease renewal
+!=
+new business event
+```
+
+## Fencing
+
+Fencing token 解决 stale worker：
+
+```text
+Worker A token=7
+→ pause / network stall
+→ lease expires
+
+Worker B takeover token=8
+→ becomes current owner
+
+Worker A resumes
+→ token 7 is stale
+→ cannot commit terminal semantic state
+```
+
+没有 fencing，仅靠 lease expiry 仍可能出现“旧 owner 复活后写结果”。
+
+## Why all three?
+
+| Primitive | 回答 |
+|---|---|
+| Claim | 谁拿到了这次 semantic execution ownership？ |
+| Lease | 这个 owner 现在还被认为 live 吗？ |
+| Fence | ownership 已经转移后，旧 owner 的写如何失效？ |
+
+## Common mistakes
+
+- heartbeat 每次都增加 semantic revision；
+- claim 与 lease 不是原子获取；
+- takeover 后仍允许旧 token 写 terminal result；
+- 用 `MemoryLedger` 声称跨进程 ownership。
+
+## Reference
+
+- [Run multiple workers](../how-to/run-multiple-workers.md)
+- [Ledgers](../dev/06-ledgers.md)
+
+<!-- END docs/concepts/claim-lease-fencing.md -->
+
+<!-- BEGIN docs/concepts/authorization-evidence.md -->
+
+# Concept · Authorization evidence
+
+## The problem
+
+“谁发起了这次调用”和“谁允许这次副作用执行”不是同一个问题。
+
+```text
+Identity
+!=
+Authority
+```
+
+如果把它们混在一起，replay / recovery 很容易悄悄改变执行权来源。
+
+## 30-second answer
+
+InvocationIdentity 回答：
+
+```text
+这是谁/哪条调用链投递的？
+```
+
+AuthorizationDecision 回答：
+
+```text
+这项 managed side effect 为什么被允许/拒绝？
+```
+
+OperatorAuthorization 又回答：
+
+```text
+谁有权 inspect / reconcile durable operations？
+```
+
+三者分开。
+
+## Classified evidence
+
+Action authorization kind：
+
+```text
+host-admission
+policy-decision
+human-approval
+```
+
+这不是 cosmetic label。
+
+例如 Agent 发起 tool call：
+
+```text
+Host accepted the tool call
+```
+
+最多可以合理表示为 `host-admission`。
+
+除非真实的人类审批流程发生过，否则不能写 `human-approval`。
+
+## Durable consistency
+
+同一个 Operation 一旦记录 allow/deny decision，后续矛盾 evidence 不会覆盖它：
+
+```text
+AUTHORIZATION_CONFLICT
+```
+
+## Operator boundary
+
+Operations API 的 `OperatorAuthorization` 是独立 trusted input。
+
+它不能从 Action input 或 model argument 里 self-grant。
+
+## Common mistakes
+
+- `identity.actor = "admin"` 就当成 authorization；
+- model argument `{approved:true}` 直接变成 human approval；
+- 用 Action authorization 调 `reconcileOnly`；
+- replay 时重新走不同 approval 路径并覆盖原 decision。
+
+## Reference
+
+[Authorization](../dev/05-authorization.md)
+
+<!-- END docs/concepts/authorization-evidence.md -->
+
+<!-- BEGIN docs/concepts/provider-capabilities.md -->
+
+# Concept · Provider capabilities decide recovery
+
+## The problem
+
+同一个本地 crash，为什么有时能 retry，有时必须 query，有时只能停下？
+
+因为 Ordarium 不能单方面决定外部 API 的语义。
+
+## 30-second answer
+
+Recovery capability 来自三方共同合同：
+
+```text
+Action declares profile
+Provider actually supports capability
+Ledger preserves durable evidence
+```
+
+少任何一个都不能凭空升级 guarantee。
+
+## Four provider shapes
+
+### A. No side effect
+
+```text
+query / pure compute
+```
+
+→ `readOnly`
+
+### B. Side effect, no key, no query
+
+```text
+fire-and-forget legacy API
+```
+
+→ `guarded`
+
+### C. Stable idempotency key
+
+```text
+same key safely denotes same external operation
+```
+
+→ `idempotent`
+
+### D. Authoritative query
+
+```text
+stable business/external key
+→ provider can tell succeeded/failed/absent/pending
+```
+
+→ `reconcilable`
+
+Provider 同时有 C + D 时，可以组合 query-first + same-key fallback。
+
+## Capability is not inferred from transport
+
+Ordarium 不根据：
+
+```text
+HTTP PUT
+HTTP POST
+status code 500
+request timeout
+SDK method name
+```
+
+猜幂等/查询合同。
+
+## Capability can expire
+
+Provider idempotency may只有有限 window。
+
+Ordarium 支持 finite deadline，就是为了避免：
+
+```text
+“这个 key 曾经安全”
+被误写成
+“这个 key 永远安全”
+```
+
+## Capability belongs in tests
+
+你应该有 integration/conformance evidence 证明：
+
+- same key 不产生 duplicate；
+- reconcile result 真的 authoritative；
+- absence semantics 确实支持 `retrySafe`；
+- window 过期时 behavior 与 profile 一致。
+
+## Start here
+
+[Choose a profile](../start/choose-a-profile.md)
+
+<!-- END docs/concepts/provider-capabilities.md -->
+
+<!-- BEGIN docs/dev/03-effect-profiles.md -->
+
+# 03 · Effect profiles
+
+Effect profile 描述 **Action + Provider 真正具备的恢复能力**。
+
+它不是成熟度等级，也不是“安全分数”。
+
+## 快速选择
+
+| Provider 能力 | 选择 |
+|---|---|
+| 无外部副作用 | `readOnly()` |
+| 有副作用，但没有 durable idempotency，也无法权威查询 | `guarded()` |
+| 真正接受稳定 operation key | `idempotent()` |
+| 可以权威查询外部结果 | `reconcilable()` |
+| 明确退出 managed crash/restart 语义 | `unmanaged()` |
+
+原则：选择**与现实能力一致的最窄 profile**。
+
+## `readOnly()`
+
+```ts
+effect: effects.readOnly()
+```
+
+适合纯计算/查询。
+
+- Runtime 不要求 Action authorization；
+- volatile ledger 可以合法使用；
+- replay 可以重新执行；
+- 不宣称任何 side-effect recovery。
+
+不要为了绕过 durable gate 把 write 标成 read-only。
+
+## `guarded()`
+
+```ts
+effect: effects.guarded()
+```
+
+适合：
+
+```text
+确实会产生外部副作用
++
+Provider 无稳定幂等键
++
+Provider 无权威结果查询
+```
+
+一旦已经可能 dispatch，而本地又无法证明结果：
+
+```text
+uncertain
+```
+
+这不是失败，而是正确状态。
+
+此时 blind retry 反而是不安全行为。
+
+## `idempotent()`
+
+Durable window：
+
+```ts
+effect: effects.idempotent()
+```
+
+Finite window：
+
+```ts
+effect: effects.idempotent({
+  window: {
+    kind: "finite",
+    expiresAfterMs: 15 * 60_000,
+  },
+})
+```
+
+只有 Provider 真正接受 `context.idempotencyKey` 时才使用。
+
+Finite window 的 deadline：
+
+- Operation 首次创建时冻结；
+- restart 不续期；
+- replay 不续期；
+- takeover 不续期；
+- reconcile 不续期。
+
+过期后，Ordarium 不再把 same-key redispatch 当成安全路径。
+
+## `reconcilable()`
+
+```ts
+effect: effects.reconcilable({
+  cancellable: false,
+})
+```
+
+必须实现 `reconcile()`：
+
+```ts
+async reconcile(input, context) {
+  const external = await provider.lookup(context.operationId);
+
+  if (external.done) {
+    return { status: "succeeded", value: external.value };
+  }
+
+  if (external.failed) {
+    return {
+      status: "failed",
+      error: {
+        code: "PROVIDER_REJECTED",
+        message: "Provider rejected operation",
+      },
+    };
+  }
+
+  if (external.absent) {
+    return { status: "absent", retrySafe: true };
+  }
+
+  return { status: "unknown" };
+}
+```
+
+允许的 reconcile outcome：
+
+```text
+succeeded
+failed
+absent { retrySafe }
+pending
+unknown
+```
+
+Recovery 先 query。
+
+`absent` 只有在：
+
+```text
+retrySafe = true
+```
+
+且相应 idempotency window 仍有效时，才可能允许**正常 runtime path**重做。
+
+### `reconcileOnly`
+
+Operator 的 `reconcileOnly` 永远不 dispatch `execute()`。
+
+即使 query 证明 absent + retrySafe，也只是返回 query-only 语义；真正 redispatch 仍由 normal runtime path 决定。
+
+### 可选 idempotency window
+
+```ts
+effects.reconcilable({
+  idempotencyWindow: { kind: "durable" },
+})
+```
+
+### 可选 cancel
+
+如果 Action 实现 `cancel()`：
+
+```ts
+effects.reconcilable({
+  cancellable: true,
+})
+```
+
+否则 Action 定义会被拒绝。
+
+## `unmanaged()`
+
+```ts
+effect: effects.unmanaged()
+```
+
+这是显式 weak-mode / migration opt-out。
+
+它不获得 managed crash/restart 保证，也不应该被文档宣传成“安全副作用模式”。
+
+## Authorization
+
+| Profile | Action authorization required? |
+|---|---:|
+| read-only | no |
+| guarded | yes |
+| idempotent | yes |
+| reconcilable | yes |
+| unmanaged | no |
+
+## Ledger requirement
+
+Managed write 需要 ledger 提供：
+
+- crash durability；
+- semantic CAS；
+- live lease；
+- semantic history；
+- 覆盖部署拓扑的 coordination。
+
+不足时在 Provider 调用之前返回：
+
+```text
+LEDGER_CAPABILITY_REQUIRED
+```
+
+## 常见错误
+
+不要：
+
+- 因为“重试通常没问题”就用 `idempotent`；
+- Provider lookup 不是权威的，却用 `reconcilable`；
+- dispatch 后 timeout 就写成 ordinary `failed`；
+- restart 时延长 finite window；
+- `guarded` 外面再套 host-level blind retry；
+- 根据 HTTP method 猜 Provider guarantee。
+
+Profile 是合同，不是愿望。
+
+<!-- END docs/dev/03-effect-profiles.md -->
+
+<!-- BEGIN docs/dev/04-errors.md -->
+
+# 04 · Errors
+
+稳定 Runtime / Ledger 错误继承 `OrdariumError`，并带有字符串 `code`。
+
+调用者应该按 `code` 或 error class 分类，**不要解析 message 文本**。
+
+| Code | 含义 | 调用者动作 |
+|---|---|---|
+| `AUTHORIZATION_REQUIRED` | Managed Action 没有 authorization decision | 提供 host/policy/human evidence |
+| `AUTHORIZATION_CONFLICT` | 同一 Operation 出现矛盾 durable authorization | 按 conflict 处理，检查 identity 是否被误复用 |
+| `PRINCIPAL_CONFLICT` | 恢复时解析到了不同 Provider principal | 恢复原 principal/account，禁止继续 |
+| `OPERATOR_AUTHORIZATION_REQUIRED` | Operations API 缺少可信 operator authorization | 从可信运维路径注入 |
+| `CONTRACT_DRIFT` | 同 name/version 下 Action contract 漂移 | 升级 Action version 或恢复兼容合同 |
+| `IDENTITY_REQUIRED` | Managed direct invocation 没有稳定 identity | 提供 source/scope/callId |
+| `LEDGER_CAPABILITY_REQUIRED` | Ledger 无法支撑请求的 capability | 使用 SQLite 或 conformant capable ledger |
+| `RUNTIME_QUIESCING` | Runtime 已停止接收新工作 | 把新工作路由到 live runtime |
+| `RUNTIME_CLOSED` | Runtime 已关闭 | 创建/使用 live runtime |
+| `IDEMPOTENCY_EXPIRED` | Finite idempotency window 已过期 | 禁止 redispatch；reconcile 或升级人工处理 |
+| `ACTION_DENIED` | Authorization 拒绝 Action | 对当前 Operation 视为 durable denial |
+| `OPERATION_CONFLICT` | Operation identity 与新材料冲突 | 检查 key/input/version/identity |
+| `OPERATION_BUSY` | 另一 live worker 持有 Operation | 退避后重试 |
+| `OPERATION_FAILED` | Operation 已 durable failed 或无法继续 | 检查 safe error/history |
+| `OPERATION_CANCELLED` | Operation 已 durable cancelled | 当前 Operation 终态 |
+| `OPERATION_UNCERTAIN` | 外部结果无法证明 | reconcile/升级处理；禁止 blind retry |
+| `PERSISTED_VALUE_TOO_LARGE` | result/receipt/state 超过持久化限制 | 缩小/脱敏数据，或显式调整 limit |
+| `INPUT_TOO_LARGE` | Action input 超过限制 | 减小输入，改传 reference |
+| `LEDGER_OPEN_FAILED` | Durable ledger 无法打开 | 按基础设施故障处理 |
+| `LEDGER_NEWER_SCHEMA` | 数据库 schema 新于当前 binary | 升级 binary，禁止旧版回写 |
+| `LEDGER_MIGRATION_FAILED` | 前向 migration 失败 | 保留旧库并调查 |
+| `LEDGER_BUSY` | SQLite/open coordination busy | 有界退避 |
+| `LEDGER_CORRUPT` | Ledger/record invariant 失败 | 停止写入，恢复/修复 |
+| `LEDGER_CLOSED` | Ledger handle 已关闭 | 使用 live ledger/runtime |
+| `LEDGER_FULL` | 持久存储无法继续写入 | 扩容/释放空间 |
+| `STATE_REVISION_CONFLICT` | State CAS 基准 revision 已过期 | reload 后重新决策 |
+| `STATE_REF_NOT_FOUND` | State write 引用了不存在的 target | 先修复/创建引用目标 |
+| `INVALID_CURSOR` | Change cursor 畸形或超过 high-water | 按显式 replay/reset policy 处理 |
+| `HOST_CONTRACT_MISMATCH` | Host contract 版本不一致 | 对齐 @ordarium/* 版本并重跑 conformance |
+
+## 可稍后重试
+
+典型 coordination / transient：
+
+```text
+OPERATION_BUSY
+LEDGER_BUSY
+```
+
+重试时继续使用同一逻辑 identity，不要为了“绕开 busy”生成新 callId。
+
+## 需要修正请求/配置
+
+```text
+IDENTITY_REQUIRED
+AUTHORIZATION_REQUIRED
+LEDGER_CAPABILITY_REQUIRED
+INPUT_TOO_LARGE
+PERSISTED_VALUE_TOO_LARGE
+HOST_CONTRACT_MISMATCH
+STATE_REVISION_CONFLICT
+STATE_REF_NOT_FOUND
+INVALID_CURSOR
+```
+
+这些错误用完全相同输入 blind retry 通常没有意义。
+
+## Durable conflict
+
+```text
+AUTHORIZATION_CONFLICT
+PRINCIPAL_CONFLICT
+CONTRACT_DRIFT
+OPERATION_CONFLICT
+```
+
+Conflict 表示：已经存在的 durable Operation 与新请求对同一身份给出了不兼容含义。
+
+应保留原记录并调查 identity / version / key / principal，而不是换个 callId 强行继续。
+
+## Outcome ambiguity
+
+```text
+OPERATION_UNCERTAIN
+IDEMPOTENCY_EXPIRED
+```
+
+含义不是“失败了”，而是当前证据不足以安全决定下一次副作用动作。
+
+优先 reconcile；没有查询原语时升级 operator/human 处理。
+
+## Provider failure
+
+Action 只应该产生可安全持久化的 error/receipt。
+
+不要把：
+
+```text
+raw provider exception
+stack
+credential
+token
+完整未脱敏 response
+```
+
+作为 durable error 保存。
+
+Dispatch 之后出现异常时，根据 effect profile 与已有证据，结果可能是 `uncertain`，而不是普通 `failed`。
+
+## Testing error
+
+`SIMULATED_PROCESS_CRASH` 用于 deterministic fault injection，不是生产 Provider error。
+
+## 持久化安全错误码
+
+`ACTION_EXECUTION_FAILED` 是**写在 record 里的** `error.code`（SafeError），不是抛出的异常类型——它随 Operation 持久化，供 `inspect`/`history` 与恢复路径读取。不要把它当作可 `catch` 的错误类处理。
+
+<!-- END docs/dev/04-errors.md -->
+
+<!-- BEGIN docs/dev/05-authorization.md -->
+
+# 05 · Authorization
+
+Ordarium 明确区分：
+
+```text
+Action authorization
+!=
+Operator authorization
+```
+
+它们回答的是两个不同问题，不能互相替代。
+
+## Action authorization
+
+Managed write 需要：
+
+```ts
+type AuthorizationDecision = {
+  decision: "allow" | "deny";
+
+  kind:
+    | "host-admission"
+    | "policy-decision"
+    | "human-approval";
+
+  source: string;
+  reason?: string;
+};
+```
+
+分类本身就是合同的一部分。
+
+“宿主收到了一次 tool call”可以证明 `host-admission`，但**不自动等于** `human-approval`。
+
+Authorization 可以：
+
+- 在每次 invocation 中传入；
+- 或由 runtime-level `authorizer` 产生。
+
+`read-only` / `unmanaged` 不要求 managed Action authorization。
+
+## Authorization 是 durable evidence
+
+Operation 一旦保存 authorization decision，后续 replay 不能改写这段 authority history。
+
+矛盾 decision：
+
+```text
+AUTHORIZATION_CONFLICT
+```
+
+这防止相同 Operation 在不同 replay 中被悄悄换成另一套授权语义。
+
+## 宿主负责什么
+
+宿主决定 authorization 的来源：
+
+- admission pipeline；
+- policy engine；
+- 人工审批；
+- 组织权限系统。
+
+Ordarium 只接收**分类后的 decision**，不实现宿主的 Approval 产品。
+
+禁止把 model/tool input 中的：
+
+```text
+approved: true
+role: admin
+humanApproved: true
+```
+
+直接转成可信 authorization。
+
+## Provider principal continuity
+
+Recovery 有时要求“仍然是同一个 Provider account / installation / tenant”。
+
+宿主可以传：
+
+```ts
+providerPrincipalRef: {
+  namespace: "github",
+  subject: "installation:1234",
+}
+```
+
+Ordarium 只持久化 digest。
+
+同一 Operation 后续恢复到不同 principal：
+
+```text
+PRINCIPAL_CONFLICT
+```
+
+这是 continuity evidence，不是 credential storage。
+
+## Operator authorization
+
+Operations API 使用另一类可信对象：
+
+```ts
+interface OperatorAuthorization {
+  operator: string;
+  source: string;
+  grantedAt: string;
+
+  scope?:
+    | "operations"
+    | "operations:reconcile";
+}
+```
+
+规则：
+
+- 它不是 Action authorization；
+- model/tool input 不能 self-grant；
+- `inspect/list/history` 需要 `operations`；
+- `reconcileOnly` 需要 `operations:reconcile`。
+
+见 [07 · Operations](07-operations.md)。
+
+## Checklist
+
+发布 managed Action 前确认：
+
+1. replay 时 identity 稳定；
+2. authorization kind 分类正确；
+3. 只有可信宿主路径能构造授权证据；
+4. denial 对该 Operation 是 durable 的；
+5. operator authorization 走独立可信通道；
+6. recovery 依赖 Provider account 时显式建模 principal continuity。
+
+<!-- END docs/dev/05-authorization.md -->
+
+<!-- BEGIN docs/dev/06-ledgers.md -->
+
+# 06 · Ledgers
+
+Runtime 依赖的是：
+
+```text
+OperationLedger
++
+LedgerCapabilities
+```
+
+不是 SQLite 类名。
+
+SQLite 是 reference durable implementation，而不是 Action 语义的一部分。
+
+## Capability contract
+
+```ts
+interface LedgerCapabilities {
+  durability:
+    | "volatile"
+    | "crash-durable";
+
+  coordination:
+    | "single-isolate"
+    | "single-process-exclusive"
+    | "local-multi-process";
+
+  semanticCas: true;
+  liveLease: boolean;
+  semanticHistory: boolean;
+  stateRevisions: boolean;
+  stateChangeFeed?: boolean;
+}
+```
+
+Runtime 按 capability fail closed，不会根据 implementation 名字猜能力。
+
+## `SqliteLedger`
+
+默认的本地 managed deployment 选择。
+
+提供：
+
+- crash-durable Operation/State records；
+- semantic CAS；
+- atomic claim + lease；
+- live lease renewal；
+- 本机多进程 coordination；
+- Operation history；
+- revisioned state；
+- state refs；
+- durable state-change ordering/cursor；
+- forward migration。
+
+当前：
+
+```text
+SQLite user_version = 4
+```
+
+## `MemoryLedger`
+
+适合：
+
+- 单元测试；
+- single-isolate read-only；
+- 明确的 volatile experiment；
+- conformance harness。
+
+它实现相同 logical port，但 capability 明确声明：
+
+```text
+durability = volatile
+coordination = single-isolate
+```
+
+因此不能拿它证明 restart durability。
+
+## Managed write gate
+
+在创建 managed Operation 之前，Runtime 会检查：
+
+```text
+Action 要求
++
+deploymentCoordination
++
+LedgerCapabilities
+```
+
+能力不足：
+
+```text
+LEDGER_CAPABILITY_REQUIRED
+```
+
+Provider 不会被调用。
+
+SQLite 打不开时，也**不会**自动 fallback 到 `MemoryLedger`。
+
+## Deployment topology
+
+```ts
+new OrdariumRuntime({
+  ledger,
+  deploymentCoordination: "local-multi-process",
+});
+```
+
+Direct embedded core 默认：
+
+```text
+single-isolate
+```
+
+声明的 deployment requirement 不能超过 ledger capability。
+
+## SQLite migrations
+
+Reference ledger 负责前向迁移。
+
+当前历史：
+
+```text
+private v1 → current
+v2 → v4
+v3 → v4
+```
+
+v4 增加 durable state-change ordering。
+
+v3 历史 revision 当时没有记录全局 commit order，因此 migration 只能按确定性规则生成 synthetic backfill order；不能把它描述成原始历史提交顺序。
+
+打开未来 schema：
+
+```text
+LEDGER_NEWER_SCHEMA
+```
+
+Migration 失败：
+
+```text
+LEDGER_MIGRATION_FAILED
+```
+
+并保持事务 rollback。
+
+## 自定义 Ledger
+
+只“实现了接口”还不等于拥有相同保证。
+
+至少必须正确实现：
+
+- revision CAS；
+- atomic claim + lease；
+- monotonic fencing；
+- heartbeat 与 semantic history 分离；
+- pagination/cursor；
+- state revision CAS；
+- ref existence；
+- truthful capability declaration。
+
+使用 [`@ordarium/testing`](09-testing.md) conformance suite 验证行为。
+
+## 部署边界
+
+SQLite 是 local embedded reference store。
+
+把 SQLite 文件放到 network filesystem **不会自动获得分布式多主机 authority / consensus**。
+
+<!-- END docs/dev/06-ledgers.md -->
+
+<!-- BEGIN docs/dev/07-operations.md -->
+
+# 07 · Operations & observability
+
+`createOperations(...)` 提供 operator-facing 的 durable Operation 观察/恢复面。
+
+它故意很小：
+
+```text
+inspect
+list
+history
+reconcileOnly
+```
+
+没有：
+
+```text
+force execute
+force retry
+raw SQL mutation
+```
+
+## 创建
+
+只读观察可以仅给 ledger：
+
+```ts
+import { createOperations } from "@ordarium/core";
+
+const operations = createOperations({ ledger });
+```
+
+`reconcileOnly` 需要 runtime：
+
+```ts
+const operations = createOperations({ runtime });
+```
+
+## OperatorAuthorization
+
+所有 Operations API 都需要可信 operator authorization：
+
+```ts
+const auth = {
+  operator: "oncall@example.com",
+  source: "admin-console",
+  grantedAt: new Date().toISOString(),
+  scope: "operations",
+} as const;
+```
+
+`reconcileOnly` 需要：
+
+```text
+operations:reconcile
+```
+
+这份授权必须来自可信运维路径，不能由 model/tool input 自己构造。
+
+## Inspect
+
+```ts
+const view = await operations.inspect(
+  operationId,
+  auth,
+);
+```
+
+Operator view 包含：
+
+- Action name/version；
+- effect kind；
+- state；
+- attempts；
+- semantic revision；
+- fencing token；
+- invocation identity；
+- authorization；
+- safe error/uncertainty；
+- receipt；
+- result digest reference。
+
+不暴露 arbitrary raw Provider data。
+
+## List
+
+```ts
+const page = await operations.list(
+  {
+    actionName: "ticket.create",
+    state: "uncertain",
+    scope: "session-42",
+    limit: 100,
+  },
+  cursor,
+  auth,
+);
+```
+
+`nextCursor` 是 opaque contract，不要解析内部格式。
+
+## History
+
+```ts
+const history = await operations.history(
+  operationId,
+  cursor,
+  100,
+  auth,
+);
+```
+
+这里是 **semantic revision history**。
+
+Lease heartbeat 不属于业务历史。
+
+## `reconcileOnly`
+
+这是 query-only recovery。
+
+调用时必须重新提供能唯一复现 durable Operation 的材料：
+
+- `operationId`；
+- Action；
+- input；
+- InvocationIdentity；
+- 可选 ProviderPrincipalRef。
+
+Ordarium 会重新计算 identity/digest。
+
+不一致：
+
+```text
+OPERATION_CONFLICT
+```
+
+关键保证：
+
+```text
+reconcileOnly 永远不调用 Action.execute()
+```
+
+即使 Provider 权威 query 返回 `absent + retrySafe`，operator query 本身也不会变成 redispatch。
+
+## Model view
+
+`projectModelView(record)` 比 operator view 更窄：
+
+- 不返回 raw result；
+- 不返回 receipt body；
+- 不返回完整 authorization / identity lineage；
+- uncertainty 只暴露有限 reasonCode。
+
+调用者只拿自己真正需要的投影。
+
+## Uncertain 的推荐运维流程
+
+1. inspect；
+2. 核对 Action/profile/Provider 能力；
+3. 支持 reconcile 时执行 `reconcileOnly`；
+4. 仍无法确定则升级 operator/human；
+5. 保留原 Operation 证据。
+
+不要通过生成新 callId 绕开 `uncertain`。
+
+<!-- END docs/dev/07-operations.md -->
+
+<!-- BEGIN docs/dev/08-hosts.md -->
+
+# 08 · Host integration
+
+Ordarium 的目标是：**宿主可以不同，但 core 不需要知道宿主是什么。**
+
+稳定接缝是：
+
+```text
+HostInvocationPort
+```
+
+## 合同
+
+```ts
+interface HostInvocation {
+  identity: InvocationIdentity;
+  authorization?: AuthorizationDecision;
+  providerPrincipalRef?: ProviderPrincipalRef;
+  signal?: AbortSignal;
+}
+
+interface HostInvocationPort {
+  invoke(
+    action,
+    input,
+    invocation,
+  ): Promise<unknown>;
+}
+```
+
+`OrdariumRuntime` 本身实现这个 port。
+
+## Host 继续拥有
+
+- tool discovery / registration；
+- Ordarium 之前的 input admission；
+- Agent / Model Loop；
+- Policy 与人工审批 UI；
+- credential；
+- sandbox；
+- session；
+- client rendering；
+- 整体 host lifecycle。
+
+Ordarium 不复制这些系统。
+
+## Host 要提供
+
+每次 invocation：
+
+1. 稳定 identity；
+2. managed Action 所需的分类 authorization；
+3. 可选 Provider principal；
+4. cancellation signal；
+5. 正确 Action definition。
+
+Replay identity 是关键。
+
+Transport 再投递同一个 tool call 时，不应该只是因为“又收到一次”就换成随机新 callId。
+
+## Host contract version
+
+当前：
+
+```text
+HOST_CONTRACT_VERSION = 1
+```
+
+自建 adapter 应执行 exact-match 握手：
+
+```ts
+import {
+  HOST_CONTRACT_VERSION,
+  assertHostContract,
+} from "@ordarium/host-kit";
+
+assertHostContract(HOST_CONTRACT_VERSION);
+```
+
+不一致：
+
+```text
+HOST_CONTRACT_MISMATCH
+```
+
+Host contract version 与 package semver、SQLite schema 相互独立。
+
+## `@ordarium/host-kit`
+
+新宿主适配的推荐入口。
+
+它只 re-export curated host-facing contract，并提供：
+
+```text
+HostAdapterHarness
+runHostAdapterConformance
+```
+
+Host package 在宣称 compatible 前应通过 portable conformance。
+
+Host-kit 不包含任何宿主特有字段。
+
+## MCP
+
+`@ordarium/host-mcp` 是当前非 legacy 的具体宿主适配器。
+
+映射：
+
+```text
+MCP tools/list
+MCP tools/call
+→
+Ordarium Actions
+```
+
+当前行为：
+
+- Action name → MCP tool name；
+- Action description/schema → tool metadata；
+- MCP client name → bounded scope（可用时）；
+- JSON-RPC request ID → callId；
+- managed Action 默认只记录 `host-admission`，除非配置自定义 authorizer；
+- `ordarium_inspect` 只有显式提供可信 operator authorization 时才注册。
+
+## Primitive input schema
+
+Core 允许 primitive Action input。
+
+具体宿主适配器可能因宿主自身的 tool schema 约束要求 object-shaped arguments——那是该适配器的限制，不是 Ordarium kernel 的限制。
+
+## Host checklist
+
+至少证明：
+
+- replay identity 稳定；
+- authorization 分类正确；
+- cancellation 正确传播；
+- Provider principal continuity 正确；
+- error mapping 不吞掉 conflict / uncertain；
+- host-specific types 不穿过 HostInvocationPort；
+- lifecycle 正确关闭 runtime/ledger；
+- contract handshake 与 host conformance 通过。
+
+<!-- END docs/dev/08-hosts.md -->
+
+<!-- BEGIN docs/dev/10-lifecycle-and-recovery.md -->
+
+# 10 · Lifecycle & recovery
+
+Ordarium Runtime lifecycle 单调前进：
+
+```text
+accepting
+→ quiescing
+→ draining
+→ closing
+→ closed
+```
+
+## Quiesce
+
+```ts
+await runtime.quiesce();
+```
+
+之后的新 invocation：
+
+```text
+RUNTIME_QUIESCING
+```
+
+已经在执行的工作不会立刻被 abort。
+
+## Dispose
+
+```ts
+await runtime.dispose({
+  drainMs: 5_000,
+});
+```
+
+流程：
+
+1. quiesce；
+2. 有界 drain；
+3. abort 剩余工作；
+4. 对仍 in-flight 的 Operation 做 durable handoff；
+5. 吸收 late callback；
+6. close ledger；
+7. lifecycle → `closed`。
+
+如果工作还没 dispatch，可以 durable cancel。
+
+如果外部副作用已经**可能** dispatch，则不能假装 abort 抹掉了外部世界的变化；handoff 会保留相应 uncertainty。
+
+## Recovery 入口
+
+下一次相同 Operation identity 到来时，不创建“另一项工作”，而是加载原记录并进入统一 recovery evaluator。
+
+```text
+有 reconcile()？
+    yes
+    → query Provider
+
+    no
+    → operation key 仍可安全使用？
+         yes + normal mode + window 未过期
+         → same-key redispatch
+
+         no
+         → stay uncertain
+```
+
+## Reconcile outcome
+
+### `succeeded`
+
+保存成功证据并返回 value。
+
+### `failed`
+
+保存 sanitized failure evidence。
+
+### `pending` / `unknown`
+
+保持不确定，等待未来证据。
+
+### `absent`
+
+Provider 说“没有这项外部结果”也不自动意味着可以重做。
+
+只有：
+
+```text
+retrySafe = true
+```
+
+且其他条件（例如 finite idempotency window）仍满足时，normal runtime 才可能允许 redispatch。
+
+## Finite idempotency deadline
+
+`idempotencyExpiresAt` 在 Operation 第一次创建时计算并冻结。
+
+以下操作都不会续期：
+
+```text
+replay
+restart
+takeover
+reconcile
+```
+
+过期后 same-key redispatch 不再被视为安全。
+
+## `reconcileOnly`
+
+Operator recovery 使用同一个 evidence evaluator，但锁死为 query-only mode。
+
+```text
+reconcileOnly
+→ 永远不 dispatch Action.execute()
+```
+
+这保证运维查询不会悄悄变成新的副作用执行入口。
+
+## 并发恢复
+
+Claim 使用：
+
+- semantic revision CAS；
+- live lease；
+- monotonic fencing token。
+
+所有权切换之后，旧 worker 不能继续以旧 fencing token 提交 semantic state。
+
+## 为什么必须有 `uncertain`
+
+外部 API 可能：
+
+```text
+已经 commit
+→ response 丢失
+→ 本地不知道
+```
+
+如果 Provider 没有可靠幂等或权威查询，系统无法诚实证明 succeeded，也无法证明 failed。
+
+所以：
+
+```text
+uncertain
+```
+
+本身就是正确 durable state。
+
+更高层宿主可以：
+
+- 等待证据；
+- 提示 operator；
+- 进入人工复核；
+
+但不应该通过新 callId 把未知结果“洗掉”。
+
+<!-- END docs/dev/10-lifecycle-and-recovery.md -->
+
+<!-- BEGIN docs/dev/11-state.md -->
+
+# 11 · Management state & change feed
+
+Operation 回答：
+
+> 这项副作用 Action 发生了什么？
+
+Management state 回答：
+
+> 这个宿主定义的 subject 目前有哪些 durable revisions？
+
+两者共享 ledger substrate，但语义完全不同。
+
+## State subject
+
+一个 subject：
+
+```text
+(namespace, key)
+```
+
+每次成功写入产生新的 immutable revision：
+
+```ts
+interface StateRecord {
+  schemaVersion: 1;
+
+  namespace: string;
+  key: string;
+  revision: number;
+
+  value: JsonValue;
+  valueDigest: string;
+
+  refs: StateRef[];
+
+  identity: InvocationIdentity;
+  authorization?: AuthorizationRecord;
+
+  writtenAt: string;
+}
+```
+
+**value 的业务含义由宿主定义。**
+
+Ordarium 不知道 `project/head`、`peer/optics`、`workflow/job-42` 分别意味着什么。
+
+## 创建 StateStore
+
+```ts
+import { createStateStore } from "@ordarium/core";
+
+const state = createStateStore({ ledger });
+```
+
+绑定 Runtime：
+
+```ts
+const state = createStateStore({ runtime });
+```
+
+后者会让 write 同样受 runtime quiesce / close gate 约束。
+
+## Revision CAS
+
+创建 revision 1：
+
+```ts
+await state.write({
+  namespace: "workflow",
+  key: "job-42",
+  expectedRevision: 0,
+  value: { phase: "queued" },
+  identity,
+});
+```
+
+从 revision 1 更新到 2：
+
+```ts
+await state.write({
+  namespace: "workflow",
+  key: "job-42",
+  expectedRevision: 1,
+  value: { phase: "running" },
+  identity,
+});
+```
+
+如果 current revision 已经改变：
+
+```text
+STATE_REVISION_CONFLICT
+```
+
+State 不使用 Operation 那套 lease/fence。
+
+它的 arbitration 就是 revision CAS。
+
+## StateRef
+
+State revision 可以引用：
+
+```ts
+{
+  kind: "operation",
+  id: operationId,
+}
+```
+
+或：
+
+```ts
+{
+  kind: "state",
+  id: "namespace/key@revision",
+}
+```
+
+写入前会检查 target 是否存在。
+
+不存在：
+
+```text
+STATE_REF_NOT_FOUND
+```
+
+这只是 structural guarantee。
+
+Ordarium 不会自动：
+
+- 传播 invalidation；
+- 判断依赖关系；
+- 把 ref 当 authority；
+- 解释图语义。
+
+## Read APIs
+
+```ts
+await state.get(namespace, key);
+
+await state.history(
+  namespace,
+  key,
+  cursor,
+  limit,
+);
+
+await state.list(
+  filter,
+  cursor,
+);
+
+await state.listReferencing(
+  ref,
+  cursor,
+  limit,
+);
+```
+
+Cursor 是 opaque。
+
+## Incremental StateChangeFeed
+
+```ts
+const page = await state.changes(
+  {
+    namespace: "workflow",
+    limit: 100,
+  },
+  cursor,
+);
+```
+
+返回：
+
+```ts
+{
+  changes: StateRecord[],
+  cursor: string,
+  hasMore: boolean,
+}
+```
+
+这里与普通分页不同：
+
+```text
+cursor 永远返回
+```
+
+即使已经读到末尾，它仍是“未来新 revision 从哪里继续”的 durable resume position。
+
+## 顺序语义
+
+Change feed 的顺序：
+
+```text
+ledger commit-observation order
+```
+
+不代表：
+
+- causal order；
+- 跨系统 wall-clock order；
+- business priority；
+- distributed global order。
+
+SQLite v4 会在 state CAS transaction 中同时写入 `ordarium_state_changes` ordering row。
+
+v3 以前没有保存全局提交顺序，所以 migration 对历史 revision 只能生成 deterministic synthetic order。
+
+## Delivery model
+
+更准确的心智模型：
+
+```text
+at-least-once observation
++
+durable cursor
++
+consumer 可以自己做 idempotency
+```
+
+Cursor 前进不等于业务 exactly-once processing。
+
+## Limit 与 cursor
+
+显式 `limit`：
+
+```text
+1..1000
+```
+
+默认：
+
+```text
+100
+```
+
+Malformed cursor 或位置大于当前 global high-water：
+
+```text
+INVALID_CURSOR
+```
+
+不会自动解释成“从头开始”或“目前没有数据”。
+
+## 已知 cursor 边界
+
+当前 cursor 没有与 database identity 绑定。
+
+如果把另一份 ledger 的 cursor 拿到当前 ledger，而它的数值位置恰好合法，系统不一定能识别这是 foreign cursor。
+
+因此 cursor storage 仍属于 consuming deployment 的 integrity boundary。
+
+## Capability gate
+
+Ledger 必须：
+
+```text
+capabilities.stateChangeFeed === true
+```
+
+并真正实现 `changes()`。
+
+否则：
+
+```text
+LEDGER_CAPABILITY_REQUIRED
+```
+
+<!-- END docs/dev/11-state.md -->
+
+<!-- BEGIN docs/12-ordarium-product-baseline.md -->
+
+# 12 · Product baseline
+
+本文只回答三个问题：
+
+1. Ordarium **是什么**；
+2. Ordarium **拥有什么责任**；
+3. 哪些责任明确属于 Host / Provider / 更高层 Runtime。
+
+它是当前产品基线，不再承担 G0–G18 的开发过程叙事。历史设计与交付证据保留在 `evidence/` 和 `docs/research/`。
+
+## 产品定义
+
+Ordarium 是一个 host-neutral embedded SDK，由三层组成：
+
+```text
+Safe Action contract
++
+Effect-authority runtime
++
+Durable operation/state substrate
+```
+
+它的目标是让真实副作用的执行、重放、并发与恢复拥有可验证的 deterministic boundary，而不是把 Ordarium 扩张成 Agent Framework。
+
+## 责任边界
+
+### Ordarium owns
+
+- versioned Action contract；
+- effect profile semantics；
+- Operation identity derivation；
+- contract / input / logical-key digests；
+- classified authorization persistence；
+- claim / lease / fencing；
+- durable Operation state/history；
+- profile-aware recovery；
+- `uncertain` 作为一等结果；
+- operator inspect/reconcile-only；
+- revisioned management state；
+- StateRef existence checks；
+- incremental state-change feed；
+- HostInvocation contract；
+- portable conformance tooling。
+
+### Host owns
+
+- Agent / Model Loop；
+- tool selection；
+- prompt/context assembly；
+- approval UI / policy source；
+- credential；
+- sandbox；
+- session；
+- client surface；
+- management state 的业务含义；
+- higher-level workflow / coordination；
+- 整体进程 lifecycle。
+
+### Provider owns / proves
+
+- stable idempotency key 是否真的有效；
+- idempotency window 多长；
+- 外部结果查询是否 authoritative；
+- cancellation 的业务含义；
+- 什么才算 Provider 侧 durable success / failure。
+
+Ordarium 不猜这些保证。
+
+## 核心不变量
+
+```text
+replayed / concurrent host delivery
+→ stable Operation identity
+→ durable evidence
+→ deterministic effect decision
+```
+
+如果外部证据不足，deterministic decision 可以是：
+
+```text
+stay uncertain
+```
+
+这不是系统失败，而是对现实状态的正确表达。
+
+## Package topology
+
+```text
+                    @ordarium/core
+                    /      |      \
+                   /       |       \
+      ledger-sqlite     testing    host leaves
+             |             |        /      \
+             |             +---- host-kit  host-mcp
+```
+
+依赖原则：
+
+```text
+host leaves → kernel
+
+kernel -/→ host leaves
+```
+
+## 当前公开事实
+
+```text
+package line              1.3.1 published / 1.3.2 workspace
+HOST_CONTRACT_VERSION = 1
+OperationRecord schema    2
+StateRecord schema        1
+SQLite user_version       4
+distribution              GitHub tags / Releases
+license                   MIT
+```
+
+日期化发布事实见 [19 · Release history](19-release-history.md)。
+
+## 默认 managed deployment
+
+```text
+Host
+→ HostInvocationPort / OrdariumRuntime
+→ @ordarium/ledger-sqlite
+→ Provider Action
+```
+
+普通部署不需要单独 daemon / network control plane。
+
+## Safety posture
+
+Ordarium 不宣称 arbitrary external effect 会自动变成 exactly-once。
+
+它真正提供的是区分能力：
+
+```text
+safe to execute
+safe to redispatch with same key
+must query Provider
+must remain uncertain
+terminal success / failure / denial / cancellation
+```
+
+Effect profile 声明 Action + Provider 具有什么恢复能力。
+
+## Data boundary
+
+Operation record 默认保存 digest，而不是 raw input / raw business key。
+
+Safe output / receipt 与 management state value 本来就是 caller-authored persisted data，所以它们必须由调用者保证不含 credential / secret。
+
+## Non-goals
+
+Ordarium 不是：
+
+- multi-agent orchestrator；
+- planner / scheduler；
+- workflow DSL；
+- model router；
+- secret manager；
+- approval product；
+- sandbox；
+- distributed consensus database；
+- multi-host durable authority。
+
+高层系统可以在 Ordarium 的 effect/state primitive 上构建这些语义。
+
+<!-- END docs/12-ordarium-product-baseline.md -->
+
+<!-- BEGIN docs/13-ordarium-action-contract.md -->
+
+# 13 · Action & runtime contract
+
+这是当前 Ordarium 的规范性运行合同。
+
+## 1. Action
+
+```ts
+interface Action<I, O> {
+  name: string;
+  version: string;
+  description: string;
+
+  input: ActionSchema<I>;
+  output: ActionSchema<O>;
+  effect: EffectProfile;
+
+  key?(
+    input: I,
+    identity: InvocationIdentity,
+  ): string;
+
+  execute(
+    input: I,
+    context: ActionExecutionContext,
+  ): Promise<O> | O;
+
+  reconcile?(
+    input: I,
+    context: ActionExecutionContext,
+  ): Promise<ReconcileResult<O>> | ReconcileResult<O>;
+
+  cancel?(
+    input: I,
+    context: ActionExecutionContext,
+  ): Promise<void> | void;
+
+  receipt?(
+    value: O,
+    input: I,
+  ): JsonValue | undefined;
+}
+```
+
+## 2. Name / version / fingerprint
+
+Action name：
+
+```text
+^[a-z][a-z0-9_.-]*$
+```
+
+Action version 是稳定标识。
+
+不兼容语义变化由 Action author 负责 bump version。
+
+`contractFingerprint` 覆盖：
+
+- name/version；
+- input/output JSON Schema；
+- effect profile；
+- `key/reconcile/cancel/receipt` 是否存在。
+
+它不 hash function source，也不替代 version discipline。
+
+## 3. EffectProfile
+
+当前 union：
+
+```text
+read-only
+guarded
+idempotent
+reconcilable
+unmanaged
+```
+
+规则：
+
+- `reconcilable` 必须实现 `reconcile()`；
+- 有 `cancel()` 的 Action 必须是 `cancellable: true` 的 reconcilable profile。
+
+## 4. InvocationIdentity
+
+```ts
+interface InvocationIdentity {
+  source: string;
+  scope: string;
+  callId: string;
+  rootCallId?: string;
+  actor?: string;
+  lineage?: string[];
+}
+```
+
+Managed write 必须有稳定 identity。
+
+`read-only` / `unmanaged` direct call 可以获得进程内生成 identity；宿主适配仍应提供稳定 host identity。
+
+## 5. Operation identity
+
+Input 先通过 Action schema parse。
+
+随后：
+
+```text
+logicalKey =
+  action.key(input, identity)
+
+  OR
+
+  source ␀ scope ␀ callId
+```
+
+然后：
+
+```text
+logicalKeyDigest = digest(logicalKey)
+
+operationId =
+  op_ + prefix(
+    digest({
+      action: action.name,
+      version: action.version,
+      logicalKeyDigest
+    })
+  )
+```
+
+`inputDigest` 独立保存。
+
+同一 Operation identity 被用于不兼容 input / contract 时 fail closed。
+
+## 6. Authorization
+
+Managed write 需要 `AuthorizationDecision`：
+
+```text
+allow | deny
+
+kind:
+host-admission
+policy-decision
+human-approval
+```
+
+Authorization 会成为 durable Operation evidence。
+
+后续矛盾 evidence：
+
+```text
+AUTHORIZATION_CONFLICT
+```
+
+`ProviderPrincipalRef` 是 transient `{namespace, subject}`，持久化时只保存 digest。
+
+Recovery 解析到不同 principal：
+
+```text
+PRINCIPAL_CONFLICT
+```
+
+## 7. Semantic states
+
+```text
+proposed
+authorized
+denied
+claimed
+dispatched
+succeeded
+failed
+cancelled
+uncertain
+reconciled
+```
+
+典型 managed write：
+
+```text
+proposed
+→ authorized
+→ claimed
+→ dispatched
+→ terminal / uncertain
+```
+
+每次 semantic transition：
+
+```text
+semanticRevision + 1
+```
+
+Live lease heartbeat 不增加 semanticRevision，也不进入 semantic history。
+
+## 8. Claim / Lease / Fencing
+
+Claim 保存：
+
+```text
+owner
+fencingToken
+acquiredAt
+resumeFrom
+```
+
+Ledger 必须把 semantic claim 与 live lease acquisition 原子化。
+
+旧 fencing token 在所有权转移后不能成功提交新的 semantic state。
+
+## 9. Ledger eligibility
+
+```ts
+interface LedgerCapabilities {
+  durability:
+    | "volatile"
+    | "crash-durable";
+
+  coordination:
+    | "single-isolate"
+    | "single-process-exclusive"
+    | "local-multi-process";
+
+  semanticCas: true;
+  liveLease: boolean;
+  semanticHistory: boolean;
+  stateRevisions: boolean;
+  stateChangeFeed?: boolean;
+}
+```
+
+Managed write 要求：
+
+- crash durability；
+- live lease；
+- semantic history；
+- 能覆盖 runtime 声明 deployment topology 的 coordination。
+
+不足时：
+
+```text
+LEDGER_CAPABILITY_REQUIRED
+```
+
+并且必须发生在 Provider dispatch 之前。
+
+## 10. Dispatch boundary
+
+Ordarium 在调用 Provider Action body 之前持久化：
+
+```text
+dispatched
+```
+
+因此一旦越过这条边界：
+
+```text
+本地没有 success record
+!=
+外部一定失败
+```
+
+这就是 `uncertain` 必须存在的原因。
+
+## 11. Recovery
+
+统一 evaluator：
+
+```text
+有 reconcile？
+→ query
+
+否则有可用 operation key
++ normal mode
++ finite deadline 未过期？
+→ redispatch-same-key
+
+否则
+→ stay-uncertain
+```
+
+### ReconcileResult
+
+```ts
+type ReconcileResult<O> =
+  | {
+      status: "succeeded";
+      value: O;
+      receipt?: JsonValue;
+    }
+  | {
+      status: "failed";
+      error: SafeError;
+      receipt?: JsonValue;
+    }
+  | {
+      status: "absent";
+      retrySafe: boolean;
+    }
+  | {
+      status: "pending";
+      receipt?: JsonValue;
+    }
+  | {
+      status: "unknown";
+      receipt?: JsonValue;
+    };
+```
+
+`absent` 只有 `retrySafe: true` 时才可能使 **normal mode** 获得重做资格。
+
+### Reconcile-only
+
+```text
+reconcileOnly
+→ same evidence evaluator
+→ query-only mode
+→ never dispatch execute
+```
+
+## 12. IdempotencyWindow
+
+```ts
+type IdempotencyWindow =
+  | { kind: "durable" }
+  | {
+      kind: "finite";
+      expiresAfterMs: number;
+    };
+```
+
+Finite deadline 在 Operation 初次创建时冻结。
+
+不会因为 replay/restart/takeover/reconcile 续期。
+
+## 13. Persistence
+
+当前：
+
+```text
+OperationRecord.schemaVersion = 2
+```
+
+可以持久化：
+
+- contract fingerprint；
+- input / logical-key / principal digests；
+- identity；
+- effect/idempotency metadata；
+- authorization；
+- semantic state/revision；
+- attempts/fence；
+- claim snapshot；
+- safe result/receipt/error；
+- uncertainty/reconciliation；
+- timestamps。
+
+LiveLease 单独保存。
+
+## 14. Resource / Secret boundary
+
+Input 与 persisted JSON 有资源上限。
+
+Oversize 必须显式报错。
+
+如果 Provider effect 已经可能发生，而 output/receipt 因资源限制无法持久化，不能把这种情况伪装成普通 failure。
+
+不要在 output / receipt / State value 中保存 credential / secret。
+
+## 15. Management state
+
+当前：
+
+```text
+StateRecord.schemaVersion = 1
+```
+
+一个 subject：
+
+```text
+(namespace, key)
+```
+
+写入：
+
+```text
+expectedRevision = 0
+→ create revision 1
+
+expectedRevision = n
+→ CAS n → n+1
+```
+
+StateRef 指向的 Operation / exact state revision 在 commit 前检查存在性。
+
+State 不使用 Operation lease/fencing。
+
+## 16. StateChangeFeed
+
+```ts
+changes(filter?, cursor?)
+→ {
+  changes,
+  cursor,
+  hasMore,
+}
+```
+
+合同：
+
+- cursor 永远返回；
+- 顺序是 ledger commit-observation order；
+- explicit `limit` 为 `1..1000`；
+- malformed/future cursor → `INVALID_CURSOR`；
+- 不宣称 causal order；
+- 不宣称 distributed exactly-once processing。
+
+## 17. Host contract
+
+当前：
+
+```text
+HOST_CONTRACT_VERSION = 1
+```
+
+HostInvocation 只携带：
+
+```text
+identity
+authorization?
+providerPrincipalRef?
+signal?
+```
+
+Core 不接受 host-framework-specific type。
+
+版本不一致 fail closed。
+
+## 18. Operations API
+
+`createOperations` 提供：
+
+```text
+inspect
+list
+history
+reconcileOnly
+```
+
+全部使用独立 `OperatorAuthorization`。
+
+```text
+ActionAuthorization
+!=
+OperatorAuthorization
+```
+
+## 19. Normative safety rules
+
+1. 不推断 Provider idempotency/query capability；
+2. 不 blind-retry uncertain guarded effect；
+3. lease heartbeat 不进入 semantic history；
+4. replay 不改写 durable authorization；
+5. 不在不同 Provider principal 下继续同一 Operation；
+6. durable storage failure 不 silent fallback 到 volatile；
+7. reconcile-only 永不 dispatch；
+8. change cursor 不是 authority，也不是 causal truth。
+
+<!-- END docs/13-ordarium-action-contract.md -->
+
+<!-- BEGIN docs/15-ordarium-complete-architecture.md -->
+
+# 15 · Architecture
+
+本文描述 Ordarium **当前架构**，不再按历史 Goal 顺序讲解。
+
+## 1. System boundary
+
+```text
+┌──────────────────────────── Host ────────────────────────────┐
+│ Agent/Tool Pipeline · Approval · Credentials · Sandbox · UX │
+└───────────────────────┬──────────────────────────────────────┘
+                        │ HostInvocation
+                        ▼
+┌──────────────────────── Ordarium ────────────────────────────┐
+│ Action contract                                              │
+│ Runtime / effect authority                                   │
+│ Operation ledger + recovery                                  │
+│ Revisioned state + state change feed                         │
+│ Operator/read surfaces                                       │
+└───────────────────────┬──────────────────────────────────────┘
+                        │ execute / reconcile / cancel
+                        ▼
+┌────────────────────── Provider ──────────────────────────────┐
+│ external API / durable business system                       │
+└───────────────────────────────────────────────────────────────┘
+```
+
+分工：
+
+```text
+Host
+→ 决定调用什么、谁允许调用、凭据/会话/沙箱是什么
+
+Ordarium
+→ 决定声明过的副作用如何获得 durable identity、
+   ownership、dispatch evidence 与 recovery
+
+Provider
+→ 决定外部事实，以及真正可提供的幂等/查询/取消能力
+```
+
+## 2. Package architecture
+
+```text
+                    @ordarium/core
+                    /      |      \
+                   /       |       \
+      ledger-sqlite     testing    host leaves
+             |             |        /      \
+             |             +---- host-kit  host-mcp
+```
+
+依赖方向：
+
+```text
+host leaves → kernel
+kernel -/→ host leaves
+```
+
+## 3. Normal execution path
+
+```text
+Host admission
+   │
+   ├─ stable identity
+   ├─ authorization evidence
+   ├─ provider principal?
+   └─ AbortSignal?
+   ▼
+Input schema parse
+   ▼
+Ledger capability gate
+   ▼
+Operation identity / digests
+   ▼
+create / load durable Operation
+   ▼
+contract / authorization / principal consistency
+   ▼
+claim + live lease + fence
+   ▼
+persist dispatched
+   ▼
+Action.execute
+   ▼
+output parse / receipt
+   ▼
+succeeded | failed | cancelled | uncertain
+```
+
+Replay/recovery 会重新进入**同一个 Operation**，而不是默认创建新工作。
+
+## 4. Semantic truth 与 liveness 分离
+
+### Semantic OperationRecord
+
+保存真正与执行事实相关的证据：
+
+```text
+state
+semanticRevision
+attempts
+authorization
+claim acquisition snapshot
+result / receipt / error / uncertainty
+```
+
+### LiveLease
+
+只保存当前执行所有权：
+
+```text
+owner
+fencingToken
+expiresAt
+leaseRevision
+```
+
+Heartbeat 只更新 liveness。
+
+```text
+lease renewal
+!=
+semantic event
+```
+
+## 5. Recovery architecture
+
+```text
+existing dispatched / uncertain Operation
+        │
+        ▼
+claim / takeover
+        │
+        ▼
+有 reconcile？
+   ┌────┴────┐
+  yes       no
+   │         │
+query        operation key 可安全使用？
+Provider          ┌───────┴───────┐
+   │             yes              no
+   ▼              │                │
+evidence          ▼                ▼
+           same-key redispatch   uncertain
+```
+
+Operator `reconcileOnly` 只走 query/evidence 路径。
+
+## 6. Authorization architecture
+
+Action execution：
+
+```text
+Host policy / human / admission
+          │
+          ▼
+AuthorizationDecision
+          │
+          ▼
+Ordarium Runtime
+          │
+          ▼
+Durable Operation evidence
+```
+
+Operator surface：
+
+```text
+Trusted admin surface
+      │
+      ▼
+OperatorAuthorization
+      │
+      ▼
+Operations API
+```
+
+二者不可互换，也不可由 model/tool input self-grant。
+
+## 7. State architecture
+
+```text
+(namespace, key)
+      │
+      ▼
+revision CAS
+      │
+      ├─ value + digest
+      ├─ identity
+      ├─ authorization?
+      └─ refs[]
+      ▼
+immutable revision chain
+```
+
+`refs` 只提供 structural typed pointer。
+
+Ordarium 不解释 graph semantics。
+
+## 8. Change-feed architecture
+
+Ledger 声明 `stateChangeFeed` 后：
+
+```text
+state CAS transaction
+      │
+      ├─ StateRecord revision
+      └─ change-order row / position
+              │
+              ▼
+StateChangeFeed.changes(cursor)
+```
+
+Cursor 是 resume position，不是 authority。
+
+SQLite 把 state revision 与 ordering row 放在同一 transaction。
+
+## 9. SQLite physical model
+
+当前 reference schema 逻辑上包含：
+
+```text
+ordarium_operations
+ordarium_operation_events
+ordarium_operation_leases
+
+ordarium_state_revisions
+ordarium_state_refs
+ordarium_state_changes
+```
+
+当前：
+
+```text
+application_id = ORDA
+user_version   = 4
+```
+
+Core 不依赖这些 table name。
+
+## 10. Host adapter architecture
+
+一个 Host Adapter 是 leaf：
+
+```text
+host protocol / tool event
+      │
+      ▼
+adapter mapping
+      │
+      ├─ InvocationIdentity
+      ├─ AuthorizationDecision?
+      ├─ ProviderPrincipalRef?
+      └─ AbortSignal?
+      ▼
+HostInvocationPort
+      │
+      ▼
+OrdariumRuntime
+```
+
+`@ordarium/host-kit` 提供 curated contract 与 portable conformance。
+
+## 11. Failure philosophy
+
+Ordarium 宁可保留更小但真实的状态空间，也不通过猜测制造方便的答案。
+
+```text
+外部结果不明
+→ uncertain
+
+ledger 能力不足
+→ dispatch 前 fail closed
+
+principal mismatch
+→ conflict
+
+finite key 已过期
+→ 不 redispatch
+
+bad cursor
+→ INVALID_CURSOR
+
+host contract mismatch
+→ fail closed
+```
+
+## 12. Higher-level consumers
+
+例如 Palimpsest 可以在 Ordarium 之上拥有：
+
+- Project state；
+- Commitment；
+- Monitor；
+- Multi-Agent coordination；
+- Verification；
+- Scheduling；
+- Cross-project federation。
+
+这些语义继续属于上层。
+
+这样 Ordarium 才能保持为可靠 effect/state substrate，而不是第二套 orchestration framework。
+
+<!-- END docs/15-ordarium-complete-architecture.md -->
+
+<!-- BEGIN docs/18-release-compat-policy.md -->
+
+# 18 · Release compatibility policy
+
+本文定义：
+
+1. 每次 `@ordarium/*` 发布必须向消费者说清什么；
+2. 消费者升级 Ordarium 时必须检查什么。
+
+已经发布的事实见 [19 · Release history](19-release-history.md)。
+
+Compatibility shim / layer 的机器登记见 [`../evidence/compatibility-register.md`](../evidence/compatibility-register.md)。
+
+## 1. Release notes 五类必答项
+
+每次 release 都必须逐项写明，即使答案是“无变化”。
+
+| # | 类别 | 典型例子 |
+|---|---|---|
+| 1 | Default change | retry/open 默认值、constructor default、resource limit |
+| 2 | Storage migration | SQLite `user_version`、前向 migration |
+| 3 | Error classification change | busy/transient/conflict/terminal 的解释变化 |
+| 4 | New stable error code | 新 `OrdariumError.code` |
+| 5 | Deprecation / legacy surface | 弃用包/API/行为及替代路径 |
+
+此外还要披露对消费者有实际意义的 additive public package / API。
+
+## 2. Consumer upgrade checklist
+
+升级时：
+
+1. 阅读本版本五类 release note；
+2. 全部 `@ordarium/*` 保持同一 release line；
+3. 核对 `HOST_CONTRACT_VERSION`；
+4. 用旧 ledger fixture 验证 migration；
+5. 重跑相关 Provider / Ledger / Host conformance；
+6. 更新自身 stable error code 分类；
+7. 对关键 default 尽量显式传参固定；
+8. 检查 compatibility register；
+9. 重跑自身 crash/replay/recovery 场景。
+
+## 3. 五条独立版本轴
+
+不要混淆：
+
+```text
+package semver
+HOST_CONTRACT_VERSION
+SQLite user_version
+OperationRecord.schemaVersion
+StateRecord.schemaVersion
+```
+
+Package release 不自动意味着其他四条都 bump。
+
+## 4. Host contract compatibility
+
+只有 Host 可见的语义合同变化才 bump：
+
+```text
+HOST_CONTRACT_VERSION
+```
+
+例如：
+
+- `HostInvocationPort` shape / semantics；
+- host-visible error-family promise；
+- host construction default 改变合同语义。
+
+握手策略：
+
+```text
+exact match
+fail closed
+```
+
+不要偷偷加入多版本 tolerance；那本身就是需要 owner/生命周期的 compatibility layer。
+
+## 5. Storage compatibility
+
+发生 SQLite schema bump 时，release notes 必须明确：
+
+- source schema；
+- target schema；
+- additive / destructive；
+- migration failure rollback；
+- historical order 是否只能近似重建。
+
+禁止建议“旧 binary 继续打开新 schema 并写入”。
+
+## 6. Public API
+
+`verify:architecture` snapshot public package exports。
+
+Intentional drift 需要：
+
+```text
+Architecture Delta Sheet
++
+snapshot update
++
+release disclosure
++
+正确 semver 档位
+```
+
+特别注意 wildcard re-export：
+
+```text
+export *
+```
+
+它可能在看似纯重构时静默扩大 public API。
+
+## 7. Legacy DSH
+
+工作区 1.3.2 已承载类型面标记（32 处 `@deprecated`，运行时与类型形状零变化），但尚未发布。
+
+当前已经决定、但尚未由已发布版本承载的姿态：
+
+```text
+@ordarium/dsh
+= legacy / frozen
+```
+
+下一次 release 必须在第 5 类披露：
+
+- 不再接收新 capability；
+- 既有消费者继续支持；
+- 推荐迁移到 `core + host-kit` 或 `host-mcp`；
+- “legacy” 本身不等于“立即移除”。
+
+Compatibility register 继续负责其机器化生命周期登记。
+
+## 8. Release gate
+
+Tag 前运行：
+
+```bash
+pnpm verify:release
+```
+
+并确认：
+
+- tag 指向目标 commit；
+- release assets 来自同一 tree；
+- release notes 五类齐全；
+- `19-release-history.md` append 新版本；
+- compatibility register 同步更新（若触发）。
+
+## 9. 写给消费者，不写给考古学家
+
+Release communication 应描述：
+
+```text
+用户会看到什么变化
+升级需要做什么
+```
+
+而不是要求消费者先理解某个 Gxx Goal 才能判断影响。
+
+<!-- END docs/18-release-compat-policy.md -->
+
+<!-- BEGIN docs/19-release-history.md -->
+
+# 19 · Release history
+
+本文是**只追加**的已发布版本事实台账。
+
+兼容政策见 [18](18-release-compat-policy.md)。
+
+## 当前发布
+
+| 项 | 当前值 |
+|---|---|
+| Published package line | **1.3.1** |
+| Workspace package line | **1.3.2**（已 bump，待发布） |
+| Tag / Release | `ordarium-v1.3.1` |
+| Distribution | GitHub tags / Releases |
+| Packages | 现役五个：core / ledger-sqlite / testing / host-kit / host-mcp；另有 legacy 叶包 dsh（frozen，见「下一版本」） |
+| SQLite schema | **v4** |
+| `HOST_CONTRACT_VERSION` | **1** |
+| OperationRecord schema | **2** |
+| StateRecord schema | **1** |
+| Node | core/testing/host-kit `>=24.0.0`; sqlite/host-mcp `>=24.15.0`（legacy dsh 同为 `>=24.15.0`） |
+
+公共 npm 发布目前没有完成；GitHub 仍是正式 release channel。
+
+## 已发布版本
+
+| Version | Date | Headline | Consumer-visible changes |
+|---|---|---|---|
+| `1.0.0` | 2026-08-17 | 首个 release line | Action/Runtime/SQLite/Testing/DSH/MCP 初始面 |
+| `1.1.0` | 2026-08-29 | Revisioned management state + SQLite open retry | SQLite v2→v3；State APIs；State errors；bounded busy retry default |
+| `1.2.0` | 2026-09-06 | Versioned Host Adapter kit | `@ordarium/host-kit`；`HOST_CONTRACT_MISMATCH`；Host contract v1 |
+| `1.3.0` | 2026-09-11 | StateChangeFeed | SQLite v3→v4；change feed；`INVALID_CURSOR` |
+| `1.3.1` | 2026-09-11 | Change-feed boundary hardening | limit `1..1000`；future cursor invalid；无 schema bump |
+
+## 1.0.0
+
+Tag：
+
+```text
+ordarium-v1.0.0
+```
+
+初始公开包：
+
+- `@ordarium/core`；
+- `@ordarium/ledger-sqlite`；
+- `@ordarium/testing`；
+- `@ordarium/dsh`；
+- `@ordarium/host-mcp`。
+
+Release channel 冻结为 GitHub。
+
+公共 npm 发布曾因账号 2FA policy 被拒绝，因此没有形成公开 npm release。
+
+## 1.1.0
+
+增加 revisioned management state：
+
+```text
+StateRecord
+createStateStore
+stateRevisions capability
+state history / reference / list
+```
+
+SQLite：
+
+```text
+v2 → v3
+```
+
+增加 state tables/indexes。
+
+同时加入 `LEDGER_BUSY` 的 bounded SQLite open retry。
+
+新 stable codes：
+
+```text
+STATE_REVISION_CONFLICT
+STATE_REF_NOT_FOUND
+```
+
+## 1.2.0
+
+增加一等 Host Adapter contract：
+
+```text
+HOST_CONTRACT_VERSION = 1
+assertHostContract
+HOST_CONTRACT_MISMATCH
+@ordarium/host-kit
+runHostAdapterConformance
+```
+
+Host-neutral 从架构原则变成可机器验证的 package contract。
+
+## 1.3.0
+
+增加 revisioned state incremental observation：
+
+```text
+StateChangeFeed
+supportsStateChangeFeed
+StateStore.changes
+INVALID_CURSOR
+```
+
+SQLite：
+
+```text
+v3 → v4
+```
+
+新增 `ordarium_state_changes`。
+
+v3 历史 state revisions 没有保存全局 commit order，因此 migration 只能生成 deterministic synthetic order，不能恢复真实历史顺序。
+
+## 1.3.1
+
+关闭 change-feed 三个边界：
+
+- explicit limit 固定为 `1..1000`；
+- malformed cursor fail closed；
+- cursor > current global high-water fail closed。
+
+保持：
+
+```text
+default page size          100
+SQLite user_version        4
+HOST_CONTRACT_VERSION = 1
+```
+
+已知限制：
+
+当前 cursor 不绑定 database identity。
+
+因此另一个 database 的 cursor 如果数值上在当前 ledger 中也合法，不一定能被识别为 foreign cursor。
+
+## 下一版本：1.3.2（工作区已 bump，待发布）
+
+1.3.1 之后做出的产品定位决定，已在工作区 1.3.2 落地：
+
+```text
+@ordarium/dsh
+= legacy / frozen
+
+类型面：公开声明全部带 @deprecated（32 处，含 /advanced）
+```
+
+**不是** package removal，也没有破坏性变更：运行时、导出集合、类型形状与依赖图零变化，既有消费者零改动。
+
+1.3.2 的 release notes 按 [18](18-release-compat-policy.md) §1 逐类披露：
+
+| # | 类别 | 1.3.2 |
+|---|---|---|
+| 1 | Default change | 无 |
+| 2 | Storage migration | 无（schema 保持 v4） |
+| 3 | Error classification change | 无 |
+| 4 | New stable error code | 无 |
+| 5 | Deprecation / legacy surface | **有**：`@ordarium/dsh` 与 `/advanced` 冻结为 legacy，声明携带 `@deprecated`，替代路径 `core + host-kit` 或 `host-mcp` |
+
+Delta Sheet：`evidence/delta-ARCH-003-dsh-legacy-freeze.md`；机器登记：`COMPAT-DSH-002`。
+
+物理移除仍受 [17](17-ordarium-goals-and-acceptance.md) 的 DSH 归属重审双条件约束（休眠中），届时应走 major 线。
+
+新接入建议：
+
+```text
+@ordarium/core + @ordarium/host-kit
+```
+
+或：
+
+```text
+@ordarium/host-mcp
+```
+
+## 独立版本轴
+
+```text
+package semver             1.3.1 published / 1.3.2 workspace
+HOST_CONTRACT_VERSION      1
+SQLite user_version        4
+OperationRecord schema     2
+StateRecord schema         1
+```
+
+五者相互关联，但互不自动联动。
+
+## Evidence
+
+版本级 design / verification 证据继续保留在：
+
+```text
+evidence/G*/
+evidence/ORD-BOOT-0/
+evidence/ORD-BOOT-0.1/
+```
+
+本文只记录 release facts，不复制全部交付过程。
+
+<!-- END docs/19-release-history.md -->
