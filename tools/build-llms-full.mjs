@@ -26,7 +26,13 @@ if (!existsSync(TARGET)) {
   process.exit(1);
 }
 
-const current = readFileSync(TARGET, "utf8");
+// Line endings are normalised on both sides: the artifact is committed with LF
+// (.gitattributes), but a checkout on a platform with core.autocrlf=true may
+// materialise CRLF, and that must not read as "stale".
+const normalize = (text) => text.replace(/\r\n/g, "\n");
+const read = (path) => normalize(readFileSync(path, "utf8"));
+
+const current = read(TARGET);
 const sections = [...current.matchAll(/<!-- BEGIN ([^\s]+) -->/g)].map((match) => match[1]);
 if (sections.length === 0) {
   process.stderr.write("docs/llms-full.txt has no <!-- BEGIN <path> --> markers\n");

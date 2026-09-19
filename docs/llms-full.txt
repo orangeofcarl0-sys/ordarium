@@ -383,7 +383,7 @@ evidence/**
 ## Coding-agent resources
 
 - [`llms.txt`](llms.txt)：精简索引 + 核心合同
-- [`llms-full.txt`](llms-full.txt)：面向 coding agent 的主文档合并文本，不包含 research/evidence 全量历史
+- [`llms-full.txt`](llms-full.txt)：面向 coding agent 的主文档合并文本，不包含 research/evidence 全量历史。它是**派生文件**：改完文档后用 `node tools/build-llms-full.mjs` 重新生成（`--check` 只校验是否过期、不写入）
 
 ## Machine verification
 
